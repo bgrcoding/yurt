@@ -468,6 +468,22 @@ tr:hover td { background: var(--soft); }
   vertical-align: middle;
 }
 
+/* ── DASHBOARD TABLE ── */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th.sortable:hover { color: var(--ink); }
+th.sortable span { font-size: 10px; margin-left: 2px; }
+
+tr.row-danger td { background: #fff5f5; }
+tr.row-danger:hover td { background: #ffe4e6; }
+tr.row-warning td { background: #fffbeb; }
+tr.row-warning:hover td { background: #fef3c7; }
+
+tr.dashboard-row { cursor: pointer; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 600px) {
   .page { padding: 20px 16px; }

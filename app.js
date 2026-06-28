@@ -87,7 +87,7 @@ function showApp() {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
   }
 
-  showPage('odalar');
+  showPage('dashboard');
 }
 
 // ── NAVIGATION ──
@@ -99,6 +99,7 @@ function showPage(name) {
   const navBtn = document.getElementById('nav' + cap(name));
   if (navBtn) navBtn.classList.add('active');
 
+  if (name === 'dashboard') loadDashboard();
   if (name === 'odalar') loadRooms();
   if (name === 'yoklama') loadYoklamaOdalar();
   if (name === 'arama') document.getElementById('aramaResults').innerHTML = '';
@@ -106,6 +107,104 @@ function showPage(name) {
 }
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// ── DASHBOARD ──
+let dashboardData = [];
+let dashboardSort = { col: '_pts', asc: false };
+
+async function loadDashboard() {
+  document.getElementById('dashboardBody').innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+  document.getElementById('dashboardStats').innerHTML = '';
+
+  const [roomsRes, studentsRes, penRes, rollRes, warnRes] = await Promise.all([
+    sb.from('rooms').select('id, name, floor').order('id'),
+    sb.from('room_students').select('room_id'),
+    sb.from('penalties').select('room_id, points'),
+    sb.from('rollcalls').select('room_id, type, status'),
+    sb.from('warnings').select('room_id, message, date, severity').order('date', { ascending: false }),
+  ]);
+
+  const rooms = roomsRes.data || [];
+  const students = studentsRes.data || [];
+  const penalties = penRes.data || [];
+  const rollcalls = rollRes.data || [];
+  const warnings = warnRes.data || [];
+
+  rooms.forEach(r => {
+    r._students   = students.filter(s => s.room_id === r.id).length;
+    r._pts        = penalties.filter(p => p.room_id === r.id).reduce((a, b) => a + (b.points || 0), 0);
+    r._absGece    = rollcalls.filter(x => x.room_id === r.id && x.type === 'gece' && x.status === 'yok').length;
+    r._absDers    = rollcalls.filter(x => x.room_id === r.id && x.type === 'ders' && x.status === 'yok').length;
+    const warns   = warnings.filter(w => w.room_id === r.id);
+    r._warnCount  = warns.length;
+    r._lastWarn   = warns[0]?.message || '—';
+    r._lastWarnDate = warns[0]?.date || null;
+    r._lastWarnSev  = warns[0]?.severity || null;
+  });
+
+  dashboardData = rooms;
+
+  // Özet istatistikler
+  const totalStudents = rooms.reduce((a, r) => a + r._students, 0);
+  const totalPts = rooms.reduce((a, r) => a + r._pts, 0);
+  const worstRoom = [...rooms].sort((a, b) => b._pts - a._pts)[0];
+  document.getElementById('dashboardStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Toplam Oda</div><div class="stat-value">${rooms.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Toplam Öğrenci</div><div class="stat-value">${totalStudents}</div></div>
+    <div class="stat-card"><div class="stat-label">Toplam Ceza Puanı</div><div class="stat-value ${totalPts >= 100 ? 'danger' : ''}">${totalPts}</div></div>
+    <div class="stat-card"><div class="stat-label">En Sorunlu Oda</div><div class="stat-value" style="font-size:20px">${worstRoom ? `Oda ${worstRoom.id} (${worstRoom._pts} puan)` : '—'}</div></div>
+  `;
+  document.getElementById('dashboardSubtitle').textContent = `${rooms.length} oda · ${totalStudents} öğrenci`;
+
+  renderDashboardTable();
+}
+
+function renderDashboardTable() {
+  const { col, asc } = dashboardSort;
+  const sorted = [...dashboardData].sort((a, b) => {
+    const av = a[col] ?? '', bv = b[col] ?? '';
+    if (av < bv) return asc ? -1 : 1;
+    if (av > bv) return asc ? 1 : -1;
+    return 0;
+  });
+
+  // Sort indicator
+  document.querySelectorAll('th.sortable span').forEach(s => s.textContent = '');
+  const indicator = document.getElementById('sort_' + col);
+  if (indicator) indicator.textContent = asc ? '↑' : '↓';
+
+  const tbody = document.getElementById('dashboardBody');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Oda yok</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(r => {
+    const rowClass = r._pts >= 50 ? 'row-danger' : r._pts >= 20 ? 'row-warning' : '';
+    const lastWarnCell = r._lastWarn !== '—'
+      ? `<span class="badge sev-${r._lastWarnSev}" style="display:inline">${r._lastWarnSev}</span> <span style="font-size:13px;color:var(--muted)">${fmtDate(r._lastWarnDate)}</span> — ${r._lastWarn.length > 30 ? r._lastWarn.slice(0,30) + '…' : r._lastWarn}`
+      : '—';
+    return `<tr class="dashboard-row ${rowClass}" onclick="openOdaDetay('${r.id}');showPage('odalar')">
+      <td><strong>${r.id}</strong>${r.name ? `<span style="color:var(--muted);font-size:12px;margin-left:6px">${r.name}</span>` : ''}</td>
+      <td>${r._students}</td>
+      <td><strong style="color:${r._pts >= 50 ? 'var(--danger)' : r._pts >= 20 ? 'var(--warning)' : 'inherit'}">${r._pts}</strong></td>
+      <td>${r._absGece || '—'}</td>
+      <td>${r._absDers || '—'}</td>
+      <td>${r._warnCount || '—'}</td>
+      <td style="max-width:240px;white-space:normal;font-size:13px">${lastWarnCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+function sortDashboard(col) {
+  if (dashboardSort.col === col) {
+    dashboardSort.asc = !dashboardSort.asc;
+  } else {
+    dashboardSort.col = col;
+    dashboardSort.asc = col === 'id';
+  }
+  renderDashboardTable();
+}
 
 // ── ROOMS ──
 async function loadRooms() {

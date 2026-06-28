@@ -12,6 +12,7 @@
 <nav class="nav" id="mainNav" style="display:none">
   <a class="nav-brand" href="#"><span>🏠</span> YURT</a>
   <div class="nav-spacer"></div>
+  <button class="nav-btn" id="navDashboard" onclick="showPage('dashboard')">Dashboard</button>
   <button class="nav-btn" id="navOdalar" onclick="showPage('odalar')">Odalar</button>
   <button class="nav-btn" id="navYoklama" onclick="showPage('yoklama')">Yoklama Al</button>
   <button class="nav-btn" id="navArama" onclick="showPage('arama')">Öğrenci Ara</button>
@@ -47,6 +48,38 @@
 
 <!-- MAIN APP -->
 <div id="app" style="display:none">
+
+  <!-- SAYFA: DASHBOARD -->
+  <div class="page" id="pageDashboard">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle" id="dashboardSubtitle">Tüm odaların genel durumu</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">↺ Yenile</button>
+    </div>
+
+    <div class="stats-row" id="dashboardStats" style="margin-bottom:24px"></div>
+
+    <div class="card table-wrap">
+      <table id="dashboardTable">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortDashboard('id')">Oda <span id="sort_id"></span></th>
+            <th class="sortable" onclick="sortDashboard('_students')">Öğrenci <span id="sort__students"></span></th>
+            <th class="sortable" onclick="sortDashboard('_pts')">Ceza Puanı <span id="sort__pts"></span></th>
+            <th class="sortable" onclick="sortDashboard('_absGece')">Gece Devamsız <span id="sort__absGece"></span></th>
+            <th class="sortable" onclick="sortDashboard('_absDers')">Ders Devamsız <span id="sort__absDers"></span></th>
+            <th class="sortable" onclick="sortDashboard('_warnCount')">Uyarı Sayısı <span id="sort__warnCount"></span></th>
+            <th>Son Uyarı</th>
+          </tr>
+        </thead>
+        <tbody id="dashboardBody">
+          <tr><td colspan="7"><div class="spinner"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
   <!-- SAYFA: ODALAR -->
   <div class="page" id="pageOdalar">
