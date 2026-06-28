@@ -524,10 +524,42 @@ function openUyariModal() {
   openModal('modalUyari');
 }
 
-function openOgrenciAtaModal() {
-  document.getElementById('ataAd').value = '';
-  document.getElementById('ataSinif').value = '';
+let ataOgrenciList = [];   // bu odaya atanabilir tüm camdata öğrencileri
+let ataRenderedList = [];  // o an listede gösterilenler (filtreli)
+
+async function openOgrenciAtaModal() {
+  document.getElementById('ataSearch').value = '';
+  const sel = document.getElementById('ataSelect');
+  sel.innerHTML = '<option disabled>Yükleniyor...</option>';
   openModal('modalOgrenciAta');
+
+  const [camdata, mevcutRes] = await Promise.all([
+    getCamdataStudents(),
+    sb.from('room_students').select('student_name').eq('room_id', currentRoomId),
+  ]);
+  // Bu odada zaten olanları çıkar
+  const mevcut = new Set((mevcutRes.data || []).map(s => s.student_name));
+  ataOgrenciList = camdata.filter(s => !mevcut.has(s.name));
+  renderAtaOgrenciler(ataOgrenciList);
+}
+
+function renderAtaOgrenciler(list) {
+  ataRenderedList = list;
+  const sel = document.getElementById('ataSelect');
+  if (!list.length) {
+    sel.innerHTML = '<option disabled>Eşleşen öğrenci yok</option>';
+    return;
+  }
+  sel.innerHTML = list.map((s, i) =>
+    `<option value="${i}">${s.name}${s.class_name ? ` — ${s.class_name}` : ''}</option>`
+  ).join('');
+  sel.selectedIndex = 0;
+}
+
+function filterAtaOgrenciler() {
+  const q = document.getElementById('ataSearch').value.trim().toLocaleLowerCase('tr');
+  const filtered = q ? ataOgrenciList.filter(s => s.name.toLocaleLowerCase('tr').includes(q)) : ataOgrenciList;
+  renderAtaOgrenciler(filtered);
 }
 
 function openOdaDeleteModal() { openModal('modalOdaSil'); }
@@ -579,13 +611,14 @@ async function saveUyari() {
 }
 
 async function saveOgrenciAta() {
-  const ad = document.getElementById('ataAd').value.trim();
-  const sinif = document.getElementById('ataSinif').value.trim();
-  if (!ad) { toast('Öğrenci adı gerekli'); return; }
-  const { error } = await sb.from('room_students').insert({ room_id: currentRoomId, student_name: ad, class_name: sinif || null });
+  const sel = document.getElementById('ataSelect');
+  const idx = parseInt(sel.value);
+  const ogrenci = ataRenderedList[idx];
+  if (!ogrenci) { toast('Lütfen bir öğrenci seçin'); return; }
+  const { error } = await sb.from('room_students').insert({ room_id: currentRoomId, student_name: ogrenci.name, class_name: ogrenci.class_name || null });
   if (error) { toast('Hata: ' + error.message); return; }
   closeModal('modalOgrenciAta');
-  toast(`${ad} odaya eklendi ✓`);
+  toast(`${ogrenci.name} odaya eklendi ✓`);
   loadSakinler();
 }
 
@@ -604,25 +637,25 @@ async function deleteOda() {
 }
 
 // ── CAMDATA ENTEGRASYON ──
+let camdataStudentsCache = null;
+
+// Camdata app_state JSON'undan tüm öğrencileri { name, class_name } olarak çeker (cache'li)
+async function getCamdataStudents(force = false) {
+  if (camdataStudentsCache && !force) return camdataStudentsCache;
+  const { data, error } = await sb.from('app_state').select('data').eq('id', 'main').single();
+  if (error || !data?.data) { toast('Camdata verisi alınamadı'); return []; }
+  const state = data.data;
+  const roster = state.roster || [];
+  const students = roster
+    .map(o => ({ name: o.name || o.ad, class_name: o.studentClass || o.class_name || '' }))
+    .filter(s => s.name);
+  students.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  camdataStudentsCache = students;
+  return students;
+}
+
 async function loadCamdataOgrenciler() {
-  const { data, error } = await sb.from('app_state').select('state').eq('id', 'main').single();
-  if (error || !data) { toast('Camdata verisi alınamadı'); return; }
-
-  let classes = [];
-  try {
-    const state = JSON.parse(data.state);
-    classes = state.classes || state.siniflar || [];
-  } catch {
-    toast('Camdata verisi okunamadı');
-    return;
-  }
-
-  const students = classes.flatMap(c => {
-    const sinifAd = c.name || c.ad || '';
-    const ogrenciler = c.students || c.ogrenciler || [];
-    return ogrenciler.map(o => ({ name: typeof o === 'string' ? o : (o.name || o.ad), class_name: sinifAd }));
-  }).filter(s => s.name);
-
+  const students = await getCamdataStudents(true);
   if (!students.length) { toast('Camdata\'da öğrenci bulunamadı'); return; }
 
   const { data: rooms } = await sb.from('rooms').select('id').order('id');

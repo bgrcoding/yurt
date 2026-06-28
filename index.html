@@ -342,12 +342,12 @@
       <button class="modal-close" onclick="closeModal('modalOgrenciAta')">✕</button>
     </div>
     <div class="field">
-      <label>Öğrenci Adı</label>
-      <input class="input" id="ataAd" placeholder="Adı Soyadı" />
+      <label>Öğrenci Ara</label>
+      <input class="input" id="ataSearch" placeholder="İsme göre filtrele..." oninput="filterAtaOgrenciler()" />
     </div>
     <div class="field">
-      <label>Sınıf (opsiyonel)</label>
-      <input class="input" id="ataSinif" placeholder="9-A" />
+      <label>Camdata Öğrencisi</label>
+      <select class="input" id="ataSelect" size="8" style="height:auto"></select>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn btn-ghost" onclick="closeModal('modalOgrenciAta')">İptal</button>
