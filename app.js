@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setTodayDefaults() {
   const today = new Date().toISOString().split('T')[0];
   const now = new Date().toTimeString().slice(0,5);
-  ['yoklamaTarih','cezaTarih','uyariTarih'].forEach(id => {
+  ['yoklamaTarih'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = today;
   });
@@ -105,7 +105,6 @@ function showPage(name) {
   if (navBtn) navBtn.classList.add('active');
 
   if (name === 'dashboard') loadDashboard();
-  if (name === 'program') loadProgram();
   if (name === 'odalar') loadRooms();
   if (name === 'yoklama') loadYoklamaOdalar();
   if (name === 'arama') document.getElementById('aramaResults').innerHTML = '';
@@ -116,25 +115,21 @@ function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // ── DASHBOARD ──
 let dashboardData = [];
-let dashboardSort = { col: '_pts', asc: false };
+let dashboardSort = { col: '_absGece', asc: false };
 
 async function loadDashboard() {
-  document.getElementById('dashboardBody').innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+  document.getElementById('dashboardBody').innerHTML = '<tr><td colspan="4"><div class="spinner"></div></td></tr>';
   document.getElementById('dashboardStats').innerHTML = '';
 
-  const [roomsRes, studentsRes, penRes, rollRes, warnRes] = await Promise.all([
+  const [roomsRes, studentsRes, rollRes] = await Promise.all([
     sb.from('rooms').select('id, name, floor').order('id'),
     sb.from('room_students').select('room_id, student_name'),
-    sb.from('penalties').select('room_id, points'),
     sb.from('rollcalls').select('room_id, type, status, student_name'),
-    sb.from('warnings').select('room_id, message, date, severity').order('date', { ascending: false }),
   ]);
 
   const rooms = roomsRes.data || [];
   const students = studentsRes.data || [];
-  const penalties = penRes.data || [];
   const rollcalls = rollRes.data || [];
-  const warnings = warnRes.data || [];
 
   // Etüt/kitap yoklaması oda yerine sınıf bazlı kaydedilir (room_id boş);
   // oda devamsızlığını öğrenci→oda eşlemesiyle hesapla.
@@ -143,26 +138,22 @@ async function loadDashboard() {
 
   rooms.forEach(r => {
     r._students   = students.filter(s => s.room_id === r.id).length;
-    r._pts        = penalties.filter(p => p.room_id === r.id).reduce((a, b) => a + (b.points || 0), 0);
     r._absGece    = rollcalls.filter(x => x.room_id === r.id && x.type === 'gece' && x.status === 'yok').length;
     r._absDers    = rollcalls.filter(x => x.type !== 'gece' && x.status === 'yok'
                       && (x.room_id === r.id || (!x.room_id && stuRoom[x.student_name] === r.id))).length;
-    const warns   = warnings.filter(w => w.room_id === r.id);
-    r._warnCount  = warns.length;
-    r._lastWarn   = warns[0]?.message || '—';
-    r._lastWarnDate = warns[0]?.date || null;
-    r._lastWarnSev  = warns[0]?.severity || null;
   });
 
   dashboardData = rooms;
 
   // Özet istatistikler
   const totalStudents = rooms.reduce((a, r) => a + r._students, 0);
-  const totalPts = rooms.reduce((a, r) => a + r._pts, 0);
+  const totalGece = rooms.reduce((a, r) => a + (r._absGece || 0), 0);
+  const totalEtut = rooms.reduce((a, r) => a + (r._absDers || 0), 0);
   document.getElementById('dashboardStats').innerHTML = `
     <div class="stat-card"><div class="stat-label">Toplam Oda</div><div class="stat-value">${rooms.length}</div></div>
     <div class="stat-card"><div class="stat-label">Toplam Öğrenci</div><div class="stat-value">${totalStudents}</div></div>
-    <div class="stat-card"><div class="stat-label">Toplam Ceza Puanı</div><div class="stat-value ${totalPts >= 100 ? 'danger' : ''}">${totalPts}</div></div>
+    <div class="stat-card"><div class="stat-label">Gece Devamsızlık</div><div class="stat-value">${totalGece}</div></div>
+    <div class="stat-card"><div class="stat-label">Etüt Devamsızlık</div><div class="stat-value">${totalEtut}</div></div>
   `;
   document.getElementById('dashboardSubtitle').textContent = `${rooms.length} oda · ${totalStudents} öğrenci`;
 
@@ -185,23 +176,18 @@ function renderDashboardTable() {
 
   const tbody = document.getElementById('dashboardBody');
   if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Oda yok</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">Oda yok</td></tr>';
     return;
   }
 
   tbody.innerHTML = sorted.map(r => {
-    const rowClass = r._pts >= 50 ? 'row-danger' : r._pts >= 20 ? 'row-warning' : '';
-    const lastWarnCell = r._lastWarn !== '—'
-      ? `<span class="badge sev-${r._lastWarnSev}" style="display:inline">${r._lastWarnSev}</span> <span style="font-size:13px;color:var(--muted)">${fmtDate(r._lastWarnDate)}</span> — ${r._lastWarn.length > 30 ? r._lastWarn.slice(0,30) + '…' : r._lastWarn}`
-      : '—';
+    const toplamDevamsiz = (r._absGece || 0) + (r._absDers || 0);
+    const rowClass = toplamDevamsiz >= 5 ? 'row-danger' : toplamDevamsiz >= 3 ? 'row-warning' : '';
     return `<tr class="dashboard-row ${rowClass}" onclick="goToRoom('${r.id}')">
       <td><strong>${r.id}</strong>${r.name ? `<span style="color:var(--muted);font-size:12px;margin-left:6px">${r.name}</span>` : ''}</td>
       <td>${r._students}</td>
-      <td><strong style="color:${r._pts >= 50 ? 'var(--danger)' : r._pts >= 20 ? 'var(--warning)' : 'inherit'}">${r._pts}</strong></td>
       <td>${r._absGece || '—'}</td>
       <td>${r._absDers || '—'}</td>
-      <td>${r._warnCount || '—'}</td>
-      <td style="max-width:240px;white-space:normal;font-size:13px">${lastWarnCell}</td>
     </tr>`;
   }).join('');
 }
@@ -358,21 +344,16 @@ async function loadRooms() {
   const grid = document.getElementById('roomGrid');
   grid.innerHTML = '<div class="spinner"></div>';
 
-  const [roomsRes, penRes, warnRes] = await Promise.all([
+  const [roomsRes, stuRes] = await Promise.all([
     sb.from('rooms').select('*').order('id'),
-    sb.from('penalties').select('room_id, points'),
-    sb.from('warnings').select('room_id, severity, date').order('date', { ascending: false }),
+    sb.from('room_students').select('room_id'),
   ]);
 
   const rooms = roomsRes.data || [];
-  const penalties = penRes.data || [];
-  const warnings = warnRes.data || [];
+  const students = stuRes.data || [];
 
-  const penByRoom = {};
-  penalties.forEach(p => { penByRoom[p.room_id] = (penByRoom[p.room_id] || 0) + (p.points || 0); });
-
-  const lastWarn = {};
-  warnings.forEach(w => { if (!lastWarn[w.room_id]) lastWarn[w.room_id] = w; });
+  const countByRoom = {};
+  students.forEach(s => { countByRoom[s.room_id] = (countByRoom[s.room_id] || 0) + 1; });
 
   document.getElementById('odalarSubtitle').textContent = `${rooms.length} oda`;
 
@@ -381,21 +362,14 @@ async function loadRooms() {
     return;
   }
 
-  grid.innerHTML = rooms.map(room => {
-    const pts = penByRoom[room.id] || 0;
-    const warn = lastWarn[room.id];
-    const ptsClass = pts >= 50 ? 'badge-danger' : pts >= 20 ? 'badge-warning' : 'badge-neutral';
-    const sevClass = warn ? `sev-${warn.severity}` : '';
-    return `
+  grid.innerHTML = rooms.map(room => `
       <div class="room-card" onclick="openOdaDetay('${room.id}')">
         <div class="room-number">${room.id}</div>
         <div class="room-meta">${room.name || (room.floor ? `${room.floor}. kat` : 'Oda')}</div>
         <div class="room-badges">
-          <span class="badge ${ptsClass}">⚡ ${pts} puan</span>
-          ${warn ? `<span class="badge ${sevClass}">${warn.severity}</span>` : ''}
+          <span class="badge badge-neutral">${countByRoom[room.id] || 0} öğrenci</span>
         </div>
-      </div>`;
-  }).join('');
+      </div>`).join('');
 }
 
 // ── ODA DETAY ──
@@ -423,22 +397,25 @@ async function goToRoom(id) {
 }
 
 async function refreshDetayAll() {
-  await Promise.all([loadSakinler(), loadYoklamalar(), loadCezalar(), loadUyarilar()]);
+  await Promise.all([loadSakinler(), loadYoklamalar()]);
   await loadDetayStats();
 }
 
 async function loadDetayStats() {
-  const [penRes, warnRes, rollRes] = await Promise.all([
-    sb.from('penalties').select('points').eq('room_id', currentRoomId),
-    sb.from('warnings').select('id').eq('room_id', currentRoomId),
-    sb.from('rollcalls').select('status').eq('room_id', currentRoomId).eq('status','yok'),
+  const stuRes = await sb.from('room_students').select('student_name').eq('room_id', currentRoomId);
+  const names = (stuRes.data || []).map(s => s.student_name);
+  const [geceRes, digerOdaRes, digerSinifRes] = await Promise.all([
+    sb.from('rollcalls').select('id').eq('room_id', currentRoomId).eq('type', 'gece').eq('status', 'yok'),
+    sb.from('rollcalls').select('id').eq('room_id', currentRoomId).neq('type', 'gece').eq('status', 'yok'),
+    names.length
+      ? sb.from('rollcalls').select('id').is('room_id', null).eq('status', 'yok').in('student_name', names)
+      : Promise.resolve({ data: [] }),
   ]);
-  const pts = (penRes.data || []).reduce((s,r) => s + (r.points||0), 0);
-  const ptsColor = pts >= 50 ? 'danger' : pts >= 20 ? 'warning' : 'success';
+  const gece = (geceRes.data || []).length;
+  const etut = (digerOdaRes.data || []).length + (digerSinifRes.data || []).length;
   document.getElementById('detayStats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Toplam Ceza</div><div class="stat-value ${ptsColor}">${pts}</div></div>
-    <div class="stat-card"><div class="stat-label">Uyarı Sayısı</div><div class="stat-value">${(warnRes.data||[]).length}</div></div>
-    <div class="stat-card"><div class="stat-label">Devamsız Kayıt</div><div class="stat-value">${(rollRes.data||[]).length}</div></div>
+    <div class="stat-card"><div class="stat-label">Gece Devamsız</div><div class="stat-value">${gece}</div></div>
+    <div class="stat-card"><div class="stat-label">Etüt Devamsız</div><div class="stat-value">${etut}</div></div>
   `;
 }
 
@@ -448,7 +425,7 @@ function switchTab(tab) {
   document.querySelectorAll('.detail-tabs .tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('#odaDetay .view').forEach(v => v.classList.remove('active'));
 
-  const tabs = { sakinler: 0, yoklamalar: 1, cezalar: 2, uyarilar: 3 };
+  const tabs = { sakinler: 0, yoklamalar: 1 };
   document.querySelectorAll('.detail-tabs .tab-btn')[tabs[tab]].classList.add('active');
   document.getElementById('tab' + cap(tab)).classList.add('active');
 }
@@ -547,59 +524,6 @@ async function loadYoklamalar() {
       <td><span class="note-chip">${r.note||'—'}</span></td>
     </tr>`;
   }).join('');
-}
-
-// ── CEZALAR ──
-async function loadCezalar() {
-  const { data } = await sb.from('penalties').select('*').eq('room_id', currentRoomId).order('date', { ascending: false });
-  const tbody = document.getElementById('cezalarBody');
-  if (!data?.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Ceza kaydı yok</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = data.map(r => `
-    <tr>
-      <td>${fmtDate(r.date)}</td>
-      <td>${r.reason}</td>
-      <td><strong style="color:var(--danger)">${r.points}</strong></td>
-      <td>${r.created_by||'—'}</td>
-      <td class="admin-only"><button class="btn btn-ghost btn-sm" onclick="deleteCeza('${r.id}')">Sil</button></td>
-    </tr>`).join('');
-  if (!isAdmin) document.querySelectorAll('#cezalarBody .admin-only').forEach(el => el.style.display = 'none');
-}
-
-async function deleteCeza(id) {
-  if (!confirm('Bu cezayı silmek istediğinize emin misiniz?')) return;
-  await sb.from('penalties').delete().eq('id', id);
-  toast('Ceza silindi');
-  loadCezalar();
-  loadDetayStats();
-}
-
-// ── UYARILAR ──
-async function loadUyarilar() {
-  const { data } = await sb.from('warnings').select('*').eq('room_id', currentRoomId).order('date', { ascending: false });
-  const tbody = document.getElementById('uyarilarBody');
-  if (!data?.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Uyarı kaydı yok</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = data.map(r => `
-    <tr>
-      <td>${fmtDate(r.date)}</td>
-      <td>${r.message}</td>
-      <td><span class="badge sev-${r.severity}">${r.severity}</span></td>
-      <td>${r.created_by||'—'}</td>
-      <td class="admin-only"><button class="btn btn-ghost btn-sm" onclick="deleteUyari('${r.id}')">Sil</button></td>
-    </tr>`).join('');
-  if (!isAdmin) document.querySelectorAll('#uyarilarBody .admin-only').forEach(el => el.style.display = 'none');
-}
-
-async function deleteUyari(id) {
-  if (!confirm('Bu uyarıyı silmek istediğinize emin misiniz?')) return;
-  await sb.from('warnings').delete().eq('id', id);
-  toast('Uyarı silindi');
-  loadUyarilar();
 }
 
 // ── YOKLAMA ALMA ──
@@ -825,16 +749,11 @@ async function aramaYap() {
   if (!students?.length) { wrap.innerHTML = '<p style="color:var(--muted)">Sonuç bulunamadı.</p>'; return; }
 
   const roomIds = [...new Set(students.map(s => s.room_id))];
-  const [rollRes, penRes] = await Promise.all([
-    sb.from('rollcalls').select('student_name, status').in('room_id', roomIds),
-    sb.from('penalties').select('room_id, points'),
-  ]);
-  const rollcalls = rollRes.data || [];
-  const penalties = penRes.data || [];
+  const { data: rollData } = await sb.from('rollcalls').select('student_name, status').in('room_id', roomIds);
+  const rollcalls = rollData || [];
 
   wrap.innerHTML = students.map(s => {
     const yok = rollcalls.filter(r => r.student_name === s.student_name && r.status === 'yok').length;
-    const pts = penalties.filter(p => p.room_id === s.room_id).reduce((a,b) => a + (b.points||0), 0);
     return `
       <div class="card" style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
@@ -844,7 +763,6 @@ async function aramaYap() {
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <span class="badge badge-accent">Oda ${s.room_id}</span>
           <span class="badge ${yok > 5 ? 'badge-danger' : yok > 2 ? 'badge-warning' : 'badge-neutral'}">Devamsız: ${yok}</span>
-          <span class="badge ${pts >= 50 ? 'badge-danger' : 'badge-neutral'}">⚡ ${pts} puan</span>
           <button class="btn btn-ghost btn-sm" onclick="goToRoom('${s.room_id}')">Odaya Git</button>
         </div>
       </div>`;
@@ -855,20 +773,6 @@ async function aramaYap() {
 function openOdaModal() {
   ['odaNoInput','odaKatInput','odaAciklamaInput'].forEach(id => document.getElementById(id).value = '');
   openModal('modalOda');
-}
-
-function openCezaModal() {
-  document.getElementById('cezaTarih').value = new Date().toISOString().split('T')[0];
-  document.getElementById('cezaSebep').value = '';
-  document.getElementById('cezaPuan').value = '';
-  openModal('modalCeza');
-}
-
-function openUyariModal() {
-  document.getElementById('uyariTarih').value = new Date().toISOString().split('T')[0];
-  document.getElementById('uyariMesaj').value = '';
-  document.getElementById('uyariSeviye').value = 'bilgi';
-  openModal('modalUyari');
 }
 
 let ataOgrenciList = [];   // bu odaya atanabilir tüm camdata öğrencileri
@@ -944,31 +848,6 @@ async function saveOda() {
   loadRooms();
 }
 
-async function saveCeza() {
-  const tarih = document.getElementById('cezaTarih').value;
-  const sebep = document.getElementById('cezaSebep').value.trim();
-  const puan = parseInt(document.getElementById('cezaPuan').value);
-  if (!sebep || !puan) { toast('Sebep ve puan gerekli'); return; }
-  const { error } = await sb.from('penalties').insert({ room_id: currentRoomId, date: tarih, reason: sebep, points: puan, created_by: currentUser?.email || '' });
-  if (error) { toast('Hata: ' + error.message); return; }
-  closeModal('modalCeza');
-  toast('Ceza eklendi ✓');
-  loadCezalar();
-  loadDetayStats();
-}
-
-async function saveUyari() {
-  const tarih = document.getElementById('uyariTarih').value;
-  const mesaj = document.getElementById('uyariMesaj').value.trim();
-  const seviye = document.getElementById('uyariSeviye').value;
-  if (!mesaj) { toast('Mesaj gerekli'); return; }
-  const { error } = await sb.from('warnings').insert({ room_id: currentRoomId, date: tarih, message: mesaj, severity: seviye, created_by: currentUser?.email || '' });
-  if (error) { toast('Hata: ' + error.message); return; }
-  closeModal('modalUyari');
-  toast('Uyarı gönderildi ✓');
-  loadUyarilar();
-}
-
 async function saveOgrenciAta() {
   const ogrenci = ataRenderedList[selectedAtaIdx];
   if (!ogrenci) { toast('Lütfen bir öğrenci seçin'); return; }
@@ -992,6 +871,45 @@ async function deleteOda() {
   toast('Oda silindi');
   closeOdaDetay();
   loadRooms();
+}
+
+function openOdaRenameModal() {
+  document.getElementById('odaYeniNo').value = currentRoomId;
+  openModal('modalOdaRename');
+}
+
+// Oda numarasını değiştir: yeni odayı oluştur, tüm kayıtları taşı, eskiyi sil.
+async function saveOdaRename() {
+  const eskiId = currentRoomId;
+  const yeni = document.getElementById('odaYeniNo').value.trim();
+  if (!yeni) { toast('Yeni numara gerekli'); return; }
+  if (yeni === eskiId) { closeModal('modalOdaRename'); return; }
+
+  const { data: cakisma } = await sb.from('rooms').select('id').eq('id', yeni).maybeSingle();
+  if (cakisma) { toast('Bu numarada zaten bir oda var'); return; }
+
+  const { data: eski, error: e0 } = await sb.from('rooms').select('*').eq('id', eskiId).single();
+  if (e0) { toast('Hata: ' + e0.message); return; }
+
+  // 1) Yeni oda satırı (kat, numaranın ilk hanesinden yeniden hesaplanır)
+  const floor = /^\d/.test(yeni) ? parseInt(yeni[0]) : eski.floor;
+  const r1 = await sb.from('rooms').insert({ id: yeni, floor, name: eski.name || null });
+  if (r1.error) { toast('Hata: ' + r1.error.message); return; }
+
+  // 2) Bağlı kayıtları yeni numaraya taşı
+  for (const t of ['room_students', 'rollcalls', 'penalties', 'warnings']) {
+    const u = await sb.from(t).update({ room_id: yeni }).eq('room_id', eskiId);
+    if (u.error) { toast(`Hata (${t}): ` + u.error.message); return; }
+  }
+
+  // 3) Eski oda satırını sil
+  await sb.from('rooms').delete().eq('id', eskiId);
+
+  closeModal('modalOdaRename');
+  toast(`Oda ${eskiId} → ${yeni} ✓`);
+  currentRoomId = yeni;
+  document.getElementById('detayOdaNo').textContent = `Oda ${yeni}`;
+  await refreshDetayAll();
 }
 
 // ── CAMDATA ENTEGRASYON ──

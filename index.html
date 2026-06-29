@@ -16,9 +16,8 @@
   <a class="nav-brand" id="navBrand" href="https://camdata.online" title="Sistem seçimine dön"><span class="brand-cam">ÇAM</span><span class="brand-data">DATA</span><span class="brand-divider">|</span><span class="brand-sub">YURT</span></a>
   <div class="nav-spacer"></div>
   <button class="nav-btn" id="navDashboard" onclick="showPage('dashboard')">Dashboard</button>
-  <button class="nav-btn" id="navProgram" onclick="showPage('program')">Program</button>
   <button class="nav-btn" id="navOdalar" onclick="showPage('odalar')">Odalar</button>
-  <button class="nav-btn" id="navYoklama" onclick="showPage('yoklama')">Yoklama</button>
+  <button class="nav-btn admin-only" id="navYoklama" onclick="showPage('yoklama')" style="display:none">Yoklama</button>
   <button class="nav-btn" id="navArama" onclick="showPage('arama')">Öğrenci Ara</button>
   <button class="nav-btn admin-only" id="navYonetim" onclick="showPage('yonetim')" style="display:none">Yönetim</button>
   <button class="nav-auth-btn" id="navLoginBtn" onclick="openLoginModal()">Yönetici Girişi</button>
@@ -68,45 +67,14 @@
           <tr>
             <th class="sortable" onclick="sortDashboard('id')">Oda <span id="sort_id"></span></th>
             <th class="sortable" onclick="sortDashboard('_students')">Öğrenci <span id="sort__students"></span></th>
-            <th class="sortable" onclick="sortDashboard('_pts')">Ceza Puanı <span id="sort__pts"></span></th>
             <th class="sortable" onclick="sortDashboard('_absGece')">Gece Devamsız <span id="sort__absGece"></span></th>
             <th class="sortable" onclick="sortDashboard('_absDers')">Etüt Devamsız <span id="sort__absDers"></span></th>
-            <th class="sortable" onclick="sortDashboard('_warnCount')">Uyarı Sayısı <span id="sort__warnCount"></span></th>
-            <th>Son Uyarı</th>
           </tr>
         </thead>
         <tbody id="dashboardBody">
-          <tr><td colspan="7"><div class="spinner"></div></td></tr>
+          <tr><td colspan="4"><div class="spinner"></div></td></tr>
         </tbody>
       </table>
-    </div>
-  </div>
-
-  <!-- SAYFA: PROGRAM -->
-  <div class="page" id="pageProgram">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Program</h1>
-        <p class="page-subtitle" id="programSubtitle">Haftalık kamp programı</p>
-      </div>
-      <div style="display:flex;gap:8px" class="admin-only">
-        <button class="btn btn-ghost btn-sm" id="programEditBtn" onclick="toggleProgramEdit()">✎ Düzenle</button>
-        <button class="btn btn-primary btn-sm" id="programSaveBtn" onclick="saveProgram()" style="display:none">Kaydet</button>
-        <button class="btn btn-ghost btn-sm" id="programCancelBtn" onclick="cancelProgramEdit()" style="display:none">İptal</button>
-      </div>
-    </div>
-
-    <h2 id="programTitle" class="program-title" contenteditable="false">BOLU TYT KAMPI 2026 — HAFTALIK PROGRAM</h2>
-
-    <div class="card table-wrap" style="padding:0">
-      <table class="program-table" id="programTable">
-        <thead id="programHead"></thead>
-        <tbody id="programBody"></tbody>
-      </table>
-    </div>
-
-    <div class="admin-only" id="programEditTools" style="display:none;margin-top:12px">
-      <button class="btn btn-ghost btn-sm" onclick="addProgramRow()">+ Satır Ekle</button>
     </div>
   </div>
 
@@ -132,8 +100,7 @@
           <p id="detayOdaSakin" style="color:var(--muted);margin:4px 0 0;font-size:14px"></p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap" class="admin-only">
-          <button class="btn btn-ghost btn-sm" onclick="openCezaModal()">+ Ceza Ekle</button>
-          <button class="btn btn-ghost btn-sm" onclick="openUyariModal()">+ Uyarı Ekle</button>
+          <button class="btn btn-ghost btn-sm" onclick="openOdaRenameModal()">Numarayı Değiştir</button>
           <button class="btn btn-danger btn-sm" onclick="openOdaDeleteModal()">Odayı Sil</button>
         </div>
       </div>
@@ -143,8 +110,6 @@
       <div class="detail-tabs">
         <button class="tab-btn active" onclick="switchTab('sakinler')">Öğrenciler</button>
         <button class="tab-btn" onclick="switchTab('yoklamalar')">Yoklamalar</button>
-        <button class="tab-btn" onclick="switchTab('cezalar')">Cezalar</button>
-        <button class="tab-btn" onclick="switchTab('uyarilar')">Uyarılar</button>
       </div>
 
       <!-- Tab: Sakinler -->
@@ -166,26 +131,6 @@
           <table>
             <thead><tr><th>Tarih</th><th>Saat</th><th>Tür</th><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
             <tbody id="yoklamalarBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab: Cezalar -->
-      <div class="view" id="tabCezalar">
-        <div class="card table-wrap">
-          <table>
-            <thead><tr><th>Tarih</th><th>Sebep</th><th>Puan</th><th>Giren</th><th class="admin-only">Sil</th></tr></thead>
-            <tbody id="cezalarBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab: Uyarılar -->
-      <div class="view" id="tabUyarilar">
-        <div class="card table-wrap">
-          <table>
-            <thead><tr><th>Tarih</th><th>Mesaj</th><th>Seviye</th><th>Giren</th><th class="admin-only">Sil</th></tr></thead>
-            <tbody id="uyarilarBody"></tbody>
           </table>
         </div>
       </div>
@@ -350,32 +295,6 @@
   </div>
 </div>
 
-<!-- Modal: Ceza Ekle -->
-<div class="modal-backdrop" id="modalCeza">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 class="modal-title">Ceza Ekle</h3>
-      <button class="modal-close" onclick="closeModal('modalCeza')">✕</button>
-    </div>
-    <div class="field">
-      <label>Tarih</label>
-      <input class="input" type="date" id="cezaTarih" />
-    </div>
-    <div class="field">
-      <label>Sebep</label>
-      <input class="input" id="cezaSebep" placeholder="Gürültü, temizlik..." />
-    </div>
-    <div class="field">
-      <label>Ceza Puanı</label>
-      <input class="input" type="number" id="cezaPuan" placeholder="10" min="1" />
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-      <button class="btn btn-ghost" onclick="closeModal('modalCeza')">İptal</button>
-      <button class="btn btn-danger" onclick="saveCeza()">Ekle</button>
-    </div>
-  </div>
-</div>
-
 <!-- Modal: Öğrenci Düzenle -->
 <div class="modal-backdrop" id="modalSakinDuzenle">
   <div class="modal">
@@ -394,36 +313,6 @@
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn btn-ghost" onclick="closeModal('modalSakinDuzenle')">İptal</button>
       <button class="btn btn-primary" onclick="saveSakinDuzenle()">Kaydet</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Uyarı Ekle -->
-<div class="modal-backdrop" id="modalUyari">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 class="modal-title">Uyarı Mesajı</h3>
-      <button class="modal-close" onclick="closeModal('modalUyari')">✕</button>
-    </div>
-    <div class="field">
-      <label>Tarih</label>
-      <input class="input" type="date" id="uyariTarih" />
-    </div>
-    <div class="field">
-      <label>Mesaj</label>
-      <textarea class="input" id="uyariMesaj" rows="3" placeholder="Oda sakinlerine duyuru..."></textarea>
-    </div>
-    <div class="field">
-      <label>Seviye</label>
-      <select class="input" id="uyariSeviye">
-        <option value="bilgi">Bilgi</option>
-        <option value="uyarı">Uyarı</option>
-        <option value="kritik">Kritik</option>
-      </select>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-      <button class="btn btn-ghost" onclick="closeModal('modalUyari')">İptal</button>
-      <button class="btn btn-primary" onclick="saveUyari()">Gönder</button>
     </div>
   </div>
 </div>
@@ -458,6 +347,25 @@
   </div>
 </div>
 
+<!-- Modal: Oda Numarası Değiştir -->
+<div class="modal-backdrop" id="modalOdaRename">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">Oda Numarasını Değiştir</h3>
+      <button class="modal-close" onclick="closeModal('modalOdaRename')">✕</button>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 12px">Bu odanın tüm kayıtları (öğrenciler, yoklamalar) yeni numaraya taşınır.</p>
+    <div class="field">
+      <label>Yeni Oda Numarası</label>
+      <input class="input" id="odaYeniNo" placeholder="örn. 320" />
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-ghost" onclick="closeModal('modalOdaRename')">İptal</button>
+      <button class="btn btn-primary" onclick="saveOdaRename()">Taşı</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Oda Sil onay -->
 <div class="modal-backdrop" id="modalOdaSil">
   <div class="modal">
@@ -465,7 +373,7 @@
       <h3 class="modal-title">Odayı Sil</h3>
       <button class="modal-close" onclick="closeModal('modalOdaSil')">✕</button>
     </div>
-    <p style="color:var(--muted)">Bu odayı ve tüm kayıtlarını (yoklamalar, cezalar, uyarılar) kalıcı olarak silmek istediğinize emin misiniz?</p>
+    <p style="color:var(--muted)">Bu odayı ve tüm kayıtlarını (öğrenciler, yoklamalar) kalıcı olarak silmek istediğinize emin misiniz?</p>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn btn-ghost" onclick="closeModal('modalOdaSil')">İptal</button>
       <button class="btn btn-danger" onclick="deleteOda()">Evet, Sil</button>
