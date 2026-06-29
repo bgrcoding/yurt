@@ -151,7 +151,7 @@
       <div class="view active" id="tabSakinler">
         <div class="card table-wrap">
           <table id="sakinlerTable">
-            <thead><tr><th>Öğrenci</th><th>Sınıf</th><th class="admin-only">İşlem</th></tr></thead>
+            <thead><tr><th>Öğrenci</th><th>Sınıf</th><th class="admin-only">Etüt Sınıfı</th><th class="admin-only">İşlem</th></tr></thead>
             <tbody id="sakinlerBody"></tbody>
           </table>
         </div>
@@ -212,19 +212,26 @@
       <div class="card" style="max-width:600px;margin-bottom:20px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="field" style="margin:0">
-            <label>Oda</label>
-            <select class="input" id="yoklamaOda"></select>
-          </div>
-          <div class="field" style="margin:0">
             <label>Tür</label>
             <select class="input" id="yoklamaTur" onchange="onYoklamaTurChange()">
               <option value="gece">Gece Yoklaması</option>
+              <option value="namaz_sabah">Sabah Namazı</option>
+              <option value="namaz_aksam">Akşam Namazı</option>
+              <option value="namaz_yatsi">Yatsı Namazı</option>
               <option value="etut1">1. Etüt</option>
               <option value="etut2">2. Etüt</option>
               <option value="etut3">3. Etüt</option>
               <option value="kitap">Kitap Okuma Etüdü</option>
               <option value="__ekstra__">+ Ekstra (özel) yoklama…</option>
             </select>
+          </div>
+          <div class="field" style="margin:0" id="yoklamaOdaWrap">
+            <label>Oda</label>
+            <select class="input" id="yoklamaOda"></select>
+          </div>
+          <div class="field" style="margin:0;display:none" id="yoklamaSinifWrap">
+            <label>Sınıf</label>
+            <select class="input" id="yoklamaSinif"></select>
           </div>
           <div class="field" style="margin:0">
             <label>Tarih</label>
@@ -262,9 +269,9 @@
             <input class="input" type="date" id="gecmisTarih" onchange="loadGecmisYoklama()" />
           </div>
           <div class="field" style="margin:0">
-            <label>Oda (opsiyonel)</label>
+            <label>Oda / Sınıf (opsiyonel)</label>
             <select class="input" id="gecmisOda" onchange="loadGecmisYoklama()">
-              <option value="">Tüm odalar</option>
+              <option value="">Tümü</option>
             </select>
           </div>
         </div>
@@ -369,6 +376,28 @@
   </div>
 </div>
 
+<!-- Modal: Öğrenci Düzenle -->
+<div class="modal-backdrop" id="modalSakinDuzenle">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">Öğrenci Düzenle</h3>
+      <button class="modal-close" onclick="closeModal('modalSakinDuzenle')">✕</button>
+    </div>
+    <div class="field">
+      <label>Ad Soyad</label>
+      <input class="input" id="duzenleAd" />
+    </div>
+    <div class="field">
+      <label>Sınıf</label>
+      <input class="input" id="duzenleSinif" placeholder="A / B / C" />
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-ghost" onclick="closeModal('modalSakinDuzenle')">İptal</button>
+      <button class="btn btn-primary" onclick="saveSakinDuzenle()">Kaydet</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Uyarı Ekle -->
 <div class="modal-backdrop" id="modalUyari">
   <div class="modal">
@@ -412,7 +441,15 @@
     </div>
     <div class="field">
       <label>Camdata Öğrencisi</label>
-      <select class="input" id="ataSelect" size="8" style="height:auto"></select>
+      <div id="ataSelect" class="picker-list"></div>
+    </div>
+    <div class="field">
+      <label>Etüt Sınıfı (opsiyonel)</label>
+      <select class="input" id="ataEtutSinif">
+        <option value="">—</option>
+        <option value="Sınıf 1">Sınıf 1</option>
+        <option value="Sınıf 2">Sınıf 2</option>
+      </select>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn btn-ghost" onclick="closeModal('modalOgrenciAta')">İptal</button>

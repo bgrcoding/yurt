@@ -259,6 +259,40 @@ h1, h2, h3, p { margin-top: 0; }
 
 select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236e6e73' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
 
+/* ── PICKER (özel seçilebilir liste) ── */
+.picker-list {
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.picker-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--ink);
+  transition: background 0.15s var(--ease), color 0.15s;
+}
+.picker-item:hover { background: var(--soft); }
+.picker-item.selected { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.picker-item .picker-sub { font-size: 13px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+.picker-item.selected .picker-sub { color: var(--accent); }
+.picker-empty { padding: 18px; text-align: center; color: var(--muted); font-size: 14px; }
+
 /* ── TABLE ── */
 .table-wrap { overflow-x: auto; }
 

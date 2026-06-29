@@ -124,9 +124,9 @@ async function loadDashboard() {
 
   const [roomsRes, studentsRes, penRes, rollRes, warnRes] = await Promise.all([
     sb.from('rooms').select('id, name, floor').order('id'),
-    sb.from('room_students').select('room_id'),
+    sb.from('room_students').select('room_id, student_name'),
     sb.from('penalties').select('room_id, points'),
-    sb.from('rollcalls').select('room_id, type, status'),
+    sb.from('rollcalls').select('room_id, type, status, student_name'),
     sb.from('warnings').select('room_id, message, date, severity').order('date', { ascending: false }),
   ]);
 
@@ -136,11 +136,17 @@ async function loadDashboard() {
   const rollcalls = rollRes.data || [];
   const warnings = warnRes.data || [];
 
+  // Etüt/kitap yoklaması oda yerine sınıf bazlı kaydedilir (room_id boş);
+  // oda devamsızlığını öğrenci→oda eşlemesiyle hesapla.
+  const stuRoom = {};
+  students.forEach(s => { stuRoom[s.student_name] = s.room_id; });
+
   rooms.forEach(r => {
     r._students   = students.filter(s => s.room_id === r.id).length;
     r._pts        = penalties.filter(p => p.room_id === r.id).reduce((a, b) => a + (b.points || 0), 0);
     r._absGece    = rollcalls.filter(x => x.room_id === r.id && x.type === 'gece' && x.status === 'yok').length;
-    r._absDers    = rollcalls.filter(x => x.room_id === r.id && x.type !== 'gece' && x.status === 'yok').length;
+    r._absDers    = rollcalls.filter(x => x.type !== 'gece' && x.status === 'yok'
+                      && (x.room_id === r.id || (!x.room_id && stuRoom[x.student_name] === r.id))).length;
     const warns   = warnings.filter(w => w.room_id === r.id);
     r._warnCount  = warns.length;
     r._lastWarn   = warns[0]?.message || '—';
@@ -153,12 +159,10 @@ async function loadDashboard() {
   // Özet istatistikler
   const totalStudents = rooms.reduce((a, r) => a + r._students, 0);
   const totalPts = rooms.reduce((a, r) => a + r._pts, 0);
-  const worstRoom = [...rooms].sort((a, b) => b._pts - a._pts)[0];
   document.getElementById('dashboardStats').innerHTML = `
     <div class="stat-card"><div class="stat-label">Toplam Oda</div><div class="stat-value">${rooms.length}</div></div>
     <div class="stat-card"><div class="stat-label">Toplam Öğrenci</div><div class="stat-value">${totalStudents}</div></div>
     <div class="stat-card"><div class="stat-label">Toplam Ceza Puanı</div><div class="stat-value ${totalPts >= 100 ? 'danger' : ''}">${totalPts}</div></div>
-    <div class="stat-card"><div class="stat-label">En Sorunlu Oda</div><div class="stat-value" style="font-size:20px">${worstRoom ? `Oda ${worstRoom.id} (${worstRoom._pts} puan)` : '—'}</div></div>
   `;
   document.getElementById('dashboardSubtitle').textContent = `${rooms.length} oda · ${totalStudents} öğrenci`;
 
@@ -190,7 +194,7 @@ function renderDashboardTable() {
     const lastWarnCell = r._lastWarn !== '—'
       ? `<span class="badge sev-${r._lastWarnSev}" style="display:inline">${r._lastWarnSev}</span> <span style="font-size:13px;color:var(--muted)">${fmtDate(r._lastWarnDate)}</span> — ${r._lastWarn.length > 30 ? r._lastWarn.slice(0,30) + '…' : r._lastWarn}`
       : '—';
-    return `<tr class="dashboard-row ${rowClass}" onclick="openOdaDetay('${r.id}');showPage('odalar')">
+    return `<tr class="dashboard-row ${rowClass}" onclick="goToRoom('${r.id}')">
       <td><strong>${r.id}</strong>${r.name ? `<span style="color:var(--muted);font-size:12px;margin-left:6px">${r.name}</span>` : ''}</td>
       <td>${r._students}</td>
       <td><strong style="color:${r._pts >= 50 ? 'var(--danger)' : r._pts >= 20 ? 'var(--warning)' : 'inherit'}">${r._pts}</strong></td>
@@ -410,6 +414,14 @@ function closeOdaDetay() {
   document.getElementById('odaDetay').style.display = 'none';
 }
 
+// Başka sayfadan (dashboard, arama) doğrudan oda detayına git.
+// Önce Odalar sayfasını aç (liste arkada yüklensin ki "geri" çalışsın),
+// sonra detayı üstüne aç — sıra önemli, yoksa loadRooms detayı kapatır.
+async function goToRoom(id) {
+  showPage('odalar');
+  await openOdaDetay(id);
+}
+
 async function refreshDetayAll() {
   await Promise.all([loadSakinler(), loadYoklamalar(), loadCezalar(), loadUyarilar()]);
   await loadDetayStats();
@@ -442,21 +454,33 @@ function switchTab(tab) {
 }
 
 // ── SAKİNLER ──
+let sakinlerCache = [];
 async function loadSakinler() {
   const { data } = await sb.from('room_students').select('*').eq('room_id', currentRoomId).order('student_name');
   const tbody = document.getElementById('sakinlerBody');
   const sakinler = data || [];
+  sakinlerCache = sakinler;
   document.getElementById('detayOdaSakin').textContent = `${sakinler.length} öğrenci`;
   if (!sakinler.length) {
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:24px">Oda boş</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">Oda boş</td></tr>`;
     return;
   }
-  tbody.innerHTML = sakinler.map(s => `
+  tbody.innerHTML = sakinler.map(s => {
+    const sinifSelect = `<select class="input" style="padding:6px 10px;font-size:13px" onchange="setSakinEtutSinif('${s.id}', this.value)">
+        <option value=""${!s.etut_sinif ? ' selected' : ''}>—</option>
+        ${ETUT_SINIFLAR.map(es => `<option value="${es}"${s.etut_sinif === es ? ' selected' : ''}>${es}</option>`).join('')}
+      </select>`;
+    return `
     <tr>
       <td><strong>${s.student_name}</strong></td>
       <td>${s.class_name || '—'}</td>
-      <td class="admin-only"><button class="btn btn-ghost btn-sm" onclick="removeSakin('${s.id}')">Çıkar</button></td>
-    </tr>`).join('');
+      <td class="admin-only">${sinifSelect}</td>
+      <td class="admin-only" style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="openSakinDuzenle('${s.id}')">Düzenle</button>
+        <button class="btn btn-ghost btn-sm" onclick="removeSakin('${s.id}')">Çıkar</button>
+      </td>
+    </tr>`;
+  }).join('');
   if (!isAdmin) document.querySelectorAll('#sakinlerBody .admin-only').forEach(el => el.style.display = 'none');
 }
 
@@ -464,6 +488,38 @@ async function removeSakin(id) {
   if (!confirm('Bu öğrenciyi odadan çıkarmak istediğinize emin misiniz?')) return;
   await sb.from('room_students').delete().eq('id', id);
   toast('Öğrenci çıkarıldı');
+  loadSakinler();
+}
+
+// Öğrenciyi bir etüt sınıfına ata (etüt/kitap yoklaması bu gruba göre alınır)
+async function setSakinEtutSinif(id, val) {
+  const { error } = await sb.from('room_students').update({ etut_sinif: val || null }).eq('id', id);
+  if (error) { toast('Hata: ' + error.message); return; }
+  toast('Etüt sınıfı güncellendi ✓');
+}
+
+// Öğrenci ad + sınıf düzenleme
+let duzenlenenSakinId = null;
+function openSakinDuzenle(id) {
+  const s = sakinlerCache.find(x => String(x.id) === String(id));
+  if (!s) return;
+  duzenlenenSakinId = id;
+  document.getElementById('duzenleAd').value = s.student_name || '';
+  document.getElementById('duzenleSinif').value = s.class_name || '';
+  openModal('modalSakinDuzenle');
+}
+
+async function saveSakinDuzenle() {
+  if (!duzenlenenSakinId) return;
+  const ad = document.getElementById('duzenleAd').value.trim();
+  const sinif = document.getElementById('duzenleSinif').value.trim();
+  if (!ad) { toast('Ad gerekli'); return; }
+  const { error } = await sb.from('room_students')
+    .update({ student_name: ad, class_name: sinif || null })
+    .eq('id', duzenlenenSakinId);
+  if (error) { toast('Hata: ' + error.message); return; }
+  closeModal('modalSakinDuzenle');
+  toast('Öğrenci güncellendi ✓');
   loadSakinler();
 }
 
@@ -550,10 +606,17 @@ async function deleteUyari(id) {
 async function loadYoklamaOdalar() {
   const { data } = await sb.from('rooms').select('id').order('id');
   const rooms = data || [];
-  const opts = rooms.map(r => `<option value="${r.id}">Oda ${r.id}</option>`).join('');
-  document.getElementById('yoklamaOda').innerHTML = opts;
-  document.getElementById('gecmisOda').innerHTML = '<option value="">Tüm odalar</option>' + opts;
+  const odaOpts = rooms.map(r => `<option value="${r.id}">Oda ${r.id}</option>`).join('');
+  const sinifOpts = ETUT_SINIFLAR.map(s => `<option value="${s}">${s}</option>`).join('');
+  document.getElementById('yoklamaOda').innerHTML = odaOpts;
+  document.getElementById('yoklamaSinif').innerHTML = sinifOpts;
+  // Geçmiş filtresi: hem odalar hem etüt sınıfları (değer ön ekiyle ayrışır)
+  document.getElementById('gecmisOda').innerHTML =
+    '<option value="">Tümü</option>'
+    + rooms.map(r => `<option value="oda:${r.id}">Oda ${r.id}</option>`).join('')
+    + ETUT_SINIFLAR.map(s => `<option value="sinif:${s}">${s}</option>`).join('');
   document.getElementById('yoklamaListesi').style.display = 'none';
+  onYoklamaTurChange();
 }
 
 // ── YOKLAMA SEKMELERİ ──
@@ -573,14 +636,12 @@ function switchYoklamaTab(tab) {
 
 async function loadGecmisYoklama() {
   const tarih = document.getElementById('gecmisTarih').value;
-  const oda = document.getElementById('gecmisOda').value;
+  const filt = document.getElementById('gecmisOda').value; // "", "oda:301" veya "sinif:Sınıf 1"
   const wrap = document.getElementById('gecmisSonuc');
   if (!tarih) { wrap.innerHTML = '<p style="color:var(--muted)">Lütfen tarih seçin.</p>'; return; }
 
   wrap.innerHTML = '<div class="spinner"></div>';
-  let q = sb.from('rollcalls').select('*').eq('date', tarih);
-  if (oda) q = q.eq('room_id', oda);
-  const { data, error } = await q.order('room_id').order('time').order('student_name');
+  const { data, error } = await sb.from('rollcalls').select('*').eq('date', tarih).order('time').order('student_name');
   if (error) { wrap.innerHTML = `<p style="color:var(--danger)">Hata: ${error.message}</p>`; return; }
 
   const rows = data || [];
@@ -589,15 +650,24 @@ async function loadGecmisYoklama() {
     return;
   }
 
-  // Oda + tür + saat'e göre grupla
+  // Birim (oda veya etüt sınıfı) + tür + saat'e göre grupla
+  const unitOf = r => r.room_id ? `oda:${r.room_id}` : `sinif:${r.etut_sinif || '?'}`;
   const groups = {};
   rows.forEach(r => {
-    const key = `${r.room_id}|${r.type}|${r.time || ''}`;
+    const key = `${unitOf(r)}|${r.type}|${r.time || ''}`;
     (groups[key] = groups[key] || []).push(r);
   });
 
-  wrap.innerHTML = Object.entries(groups).map(([key, list]) => {
-    const [room_id, type, time] = key.split('|');
+  let entries = Object.entries(groups);
+  if (filt) entries = entries.filter(([key]) => key.split('|')[0] === filt);
+  if (!entries.length) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>Bu filtreye uygun yoklama kaydı yok.</p></div>`;
+    return;
+  }
+
+  wrap.innerHTML = entries.map(([key, list]) => {
+    const [unit, type, time] = key.split('|');
+    const unitLabel = unit.startsWith('oda:') ? `Oda ${unit.slice(4)}` : unit.slice(6);
     const turBadge = turLabel(type);
     const yokSayisi = list.filter(r => r.status === 'yok').length;
     const izinSayisi = list.filter(r => r.status === 'izin').length;
@@ -609,7 +679,7 @@ async function loadGecmisYoklama() {
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
           <div>
-            <strong style="font-size:16px">Oda ${room_id}</strong>
+            <strong style="font-size:16px">${unitLabel}</strong>
             <span class="badge badge-accent" style="margin-left:8px">${turBadge}</span>
             ${time ? `<span style="color:var(--muted);font-size:13px;margin-left:6px">${time}</span>` : ''}
           </div>
@@ -647,11 +717,27 @@ async function deleteGecmisYoklama(ids) {
 }
 
 async function loadYoklamaOgrenciler() {
-  const roomId = document.getElementById('yoklamaOda').value;
-  if (!roomId) return;
-  const { data } = await sb.from('room_students').select('student_name').eq('room_id', roomId).order('student_name');
+  const tur = document.getElementById('yoklamaTur').value;
+  const mode = yoklamaMode(tur);
+
+  let query;
+  if (mode === 'sinif') {
+    const sinif = document.getElementById('yoklamaSinif').value;
+    if (!sinif) return;
+    query = sb.from('room_students').select('student_name').eq('etut_sinif', sinif).order('student_name');
+  } else {
+    const roomId = document.getElementById('yoklamaOda').value;
+    if (!roomId) return;
+    query = sb.from('room_students').select('student_name').eq('room_id', roomId).order('student_name');
+  }
+
+  const { data, error } = await query;
+  if (error) { toast('Hata: ' + error.message); return; }
   const students = data || [];
-  if (!students.length) { toast('Bu odada kayıtlı öğrenci yok'); return; }
+  if (!students.length) {
+    toast(mode === 'sinif' ? 'Bu sınıfa atanmış öğrenci yok' : 'Bu odada kayıtlı öğrenci yok');
+    return;
+  }
 
   const tbody = document.getElementById('yoklamaOgrencilerBody');
   tbody.innerHTML = students.map((s, i) => `
@@ -681,13 +767,31 @@ function setStatus(idx, status) {
 }
 
 function onYoklamaTurChange() {
-  const isEkstra = document.getElementById('yoklamaTur').value === '__ekstra__';
+  const tur = document.getElementById('yoklamaTur').value;
+  const isEkstra = tur === '__ekstra__';
+  const mode = yoklamaMode(tur);
   document.getElementById('yoklamaEkstraWrap').style.display = isEkstra ? '' : 'none';
+  // Gece/ekstra → Oda seçimi; etüt/kitap → Sınıf seçimi
+  document.getElementById('yoklamaOdaWrap').style.display = mode === 'oda' ? '' : 'none';
+  document.getElementById('yoklamaSinifWrap').style.display = mode === 'sinif' ? '' : 'none';
+  // Tür değişince eski listeyi gizle (karışıklık olmasın)
+  document.getElementById('yoklamaListesi').style.display = 'none';
 }
 
 async function saveYoklama() {
-  const roomId = document.getElementById('yoklamaOda').value;
   let tur = document.getElementById('yoklamaTur').value;
+  const mode = yoklamaMode(tur);
+
+  // Gruba göre hedef: gece/ekstra → oda, etüt/kitap → sınıf
+  let roomId = null, etutSinif = null;
+  if (mode === 'sinif') {
+    etutSinif = document.getElementById('yoklamaSinif').value;
+    if (!etutSinif) { toast('Sınıf seçin'); return; }
+  } else {
+    roomId = document.getElementById('yoklamaOda').value;
+    if (!roomId) { toast('Oda seçin'); return; }
+  }
+
   if (tur === '__ekstra__') {
     tur = document.getElementById('yoklamaEkstraAd').value.trim();
     if (!tur) { toast('Ekstra yoklama adı gerekli'); return; }
@@ -702,7 +806,7 @@ async function saveYoklama() {
     const name = row.querySelector('td:first-child').textContent.trim();
     const status = row.dataset.status || 'var';
     const note = row.querySelector(`[data-note="${i}"]`)?.value || '';
-    records.push({ room_id: roomId, type: tur, date: tarih, time: saat, student_name: name, status, note, created_by: by });
+    records.push({ room_id: roomId, etut_sinif: etutSinif, type: tur, date: tarih, time: saat, student_name: name, status, note, created_by: by });
   });
 
   const { error } = await sb.from('rollcalls').insert(records);
@@ -741,7 +845,7 @@ async function aramaYap() {
           <span class="badge badge-accent">Oda ${s.room_id}</span>
           <span class="badge ${yok > 5 ? 'badge-danger' : yok > 2 ? 'badge-warning' : 'badge-neutral'}">Devamsız: ${yok}</span>
           <span class="badge ${pts >= 50 ? 'badge-danger' : 'badge-neutral'}">⚡ ${pts} puan</span>
-          <button class="btn btn-ghost btn-sm" onclick="openOdaDetay('${s.room_id}');showPage('odalar')">Odaya Git</button>
+          <button class="btn btn-ghost btn-sm" onclick="goToRoom('${s.room_id}')">Odaya Git</button>
         </div>
       </div>`;
   }).join('');
@@ -769,9 +873,11 @@ function openUyariModal() {
 
 let ataOgrenciList = [];   // bu odaya atanabilir tüm camdata öğrencileri
 let ataRenderedList = [];  // o an listede gösterilenler (filtreli)
+let selectedAtaIdx = -1;   // listede seçili öğrencinin index'i
 
 async function openOgrenciAtaModal() {
   document.getElementById('ataSearch').value = '';
+  document.getElementById('ataEtutSinif').value = '';
   const sel = document.getElementById('ataSelect');
   sel.innerHTML = '<option disabled>Yükleniyor...</option>';
   openModal('modalOgrenciAta');
@@ -788,15 +894,25 @@ async function openOgrenciAtaModal() {
 
 function renderAtaOgrenciler(list) {
   ataRenderedList = list;
-  const sel = document.getElementById('ataSelect');
+  const box = document.getElementById('ataSelect');
   if (!list.length) {
-    sel.innerHTML = '<option disabled>Eşleşen öğrenci yok</option>';
+    box.innerHTML = '<div class="picker-empty">Eşleşen öğrenci yok</div>';
+    selectedAtaIdx = -1;
     return;
   }
-  sel.innerHTML = list.map((s, i) =>
-    `<option value="${i}">${s.name}${s.class_name ? ` — ${s.class_name}` : ''}</option>`
+  box.innerHTML = list.map((s, i) =>
+    `<button type="button" class="picker-item${i === 0 ? ' selected' : ''}" data-idx="${i}" onclick="selectAtaOgrenci(${i})">
+      <span>${escapeHtml(s.name)}</span>${s.class_name ? `<span class="picker-sub">${escapeHtml(s.class_name)}</span>` : ''}
+    </button>`
   ).join('');
-  sel.selectedIndex = 0;
+  selectedAtaIdx = 0;
+}
+
+function selectAtaOgrenci(i) {
+  selectedAtaIdx = i;
+  document.querySelectorAll('#ataSelect .picker-item').forEach(el => {
+    el.classList.toggle('selected', Number(el.dataset.idx) === i);
+  });
 }
 
 function filterAtaOgrenciler() {
@@ -854,11 +970,10 @@ async function saveUyari() {
 }
 
 async function saveOgrenciAta() {
-  const sel = document.getElementById('ataSelect');
-  const idx = parseInt(sel.value);
-  const ogrenci = ataRenderedList[idx];
+  const ogrenci = ataRenderedList[selectedAtaIdx];
   if (!ogrenci) { toast('Lütfen bir öğrenci seçin'); return; }
-  const { error } = await sb.from('room_students').insert({ room_id: currentRoomId, student_name: ogrenci.name, class_name: ogrenci.class_name || null });
+  const etutSinif = document.getElementById('ataEtutSinif').value || null;
+  const { error } = await sb.from('room_students').insert({ room_id: currentRoomId, student_name: ogrenci.name, class_name: ogrenci.class_name || null, etut_sinif: etutSinif });
   if (error) { toast('Hata: ' + error.message); return; }
   closeModal('modalOgrenciAta');
   toast(`${ogrenci.name} odaya eklendi ✓`);
@@ -967,12 +1082,20 @@ function escapeHtml(s) {
 // Yoklama türü → rozet etiketi
 const TUR_LABELS = {
   gece: '🌙 Gece',
+  namaz_sabah: '🕌 Sabah Namazı',
+  namaz_aksam: '🕌 Akşam Namazı',
+  namaz_yatsi: '🕌 Yatsı Namazı',
   etut1: '1. Etüt',
   etut2: '2. Etüt',
   etut3: '3. Etüt',
   kitap: '📖 Kitap Okuma',
   ders: '📚 Ders', // eski kayıtlar için
 };
+
+// Etüt/kitap yoklaması SINIF bazlı alınır (odadan bağımsız); gece ise ODA bazlı.
+const ETUT_SINIFLAR = ['Sınıf 1', 'Sınıf 2'];
+const SINIF_TURLER = new Set(['etut1', 'etut2', 'etut3', 'kitap']);
+function yoklamaMode(tur) { return SINIF_TURLER.has(tur) ? 'sinif' : 'oda'; }
 function turLabel(type) {
   return TUR_LABELS[type] || type || '—';
 }
