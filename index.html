@@ -7,13 +7,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Otomatik önbellek kırıcı: her yüklemede güncel CSS'i çeker.
+    document.write('<link rel="stylesheet" href="styles.css?v=' + Date.now() + '" />');
+  </script>
 </head>
 <body>
 
 <!-- NAV -->
 <nav class="nav" id="mainNav" style="display:none">
-  <a class="nav-brand" id="navBrand" href="https://camdata.online" title="Sistem seçimine dön"><span class="brand-cam">ÇAM</span><span class="brand-data">DATA</span><span class="brand-divider">|</span><span class="brand-sub">YURT</span></a>
+  <a class="nav-brand" id="navBrand" href="https://camdata.online" title="Sistem seçimine dön"><span class="brand-cam">ÇAM</span><span class="brand-data">DATA</span><span class="brand-sub">YURT</span></a>
   <div class="nav-spacer"></div>
   <button class="nav-btn" id="navDashboard" onclick="showPage('dashboard')">Dashboard</button>
   <button class="nav-btn" id="navOdalar" onclick="showPage('odalar')">Odalar</button>
@@ -154,8 +157,8 @@
 
     <!-- View: Yoklama Al -->
     <div class="view active" id="yokViewAl">
-      <div class="card" style="max-width:600px;margin-bottom:20px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px">
           <div class="field" style="margin:0">
             <label>Tür</label>
             <select class="input" id="yoklamaTur" onchange="onYoklamaTurChange()">
@@ -170,14 +173,6 @@
               <option value="__ekstra__">+ Ekstra (özel) yoklama…</option>
             </select>
           </div>
-          <div class="field" style="margin:0" id="yoklamaOdaWrap">
-            <label>Oda</label>
-            <select class="input" id="yoklamaOda"></select>
-          </div>
-          <div class="field" style="margin:0;display:none" id="yoklamaSinifWrap">
-            <label>Sınıf</label>
-            <select class="input" id="yoklamaSinif"></select>
-          </div>
           <div class="field" style="margin:0">
             <label>Tarih</label>
             <input class="input" type="date" id="yoklamaTarih" />
@@ -191,35 +186,46 @@
             <input class="input" id="yoklamaEkstraAd" placeholder="Örn. Sabah Sporu, Akşam Yoklaması..." />
           </div>
         </div>
-        <button class="btn btn-primary" style="margin-top:16px" onclick="loadYoklamaOgrenciler()">Öğrencileri Getir</button>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="loadYoklamaTumu()">Yoklamayı Getir</button>
+        <p style="color:var(--muted);font-size:13px;margin:10px 0 0">Tüm gruplar tek ekranda gelir; herkes varsayılan <strong>Var</strong>'dır, sadece gelmeyenleri işaretleyip <strong>Hepsini Kaydet</strong>'e bas. Aynı tarih+tür için tekrar kaydedersen önceki yoklama güncellenir (kopya olmaz).</p>
       </div>
 
       <div id="yoklamaListesi" style="display:none">
-        <div class="card table-wrap" style="margin-bottom:16px">
-          <table>
-            <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
-            <tbody id="yoklamaOgrencilerBody"></tbody>
-          </table>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;position:sticky;top:0;background:var(--soft);padding:8px 0;z-index:5">
+          <div id="yoklamaOzet" style="color:var(--muted);font-size:14px;font-weight:600"></div>
+          <button class="btn btn-primary" onclick="saveYoklamaTumu()">Hepsini Kaydet</button>
         </div>
-        <button class="btn btn-primary" onclick="saveYoklama()">Yoklamayı Kaydet</button>
+        <div id="yoklamaGruplar"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+          <button class="btn btn-primary" onclick="saveYoklamaTumu()">Hepsini Kaydet</button>
+        </div>
       </div>
     </div>
 
     <!-- View: Geçmiş -->
     <div class="view" id="yokViewGecmis">
-      <div class="card" style="max-width:600px;margin-bottom:20px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px">
           <div class="field" style="margin:0">
             <label>Tarih</label>
             <input class="input" type="date" id="gecmisTarih" onchange="loadGecmisYoklama()" />
           </div>
           <div class="field" style="margin:0">
-            <label>Oda / Sınıf (opsiyonel)</label>
-            <select class="input" id="gecmisOda" onchange="loadGecmisYoklama()">
+            <label>Tür</label>
+            <select class="input" id="gecmisTur" onchange="renderGecmis()">
+              <option value="">Tüm türler</option>
+            </select>
+          </div>
+          <div class="field" style="margin:0">
+            <label>Oda / Sınıf</label>
+            <select class="input" id="gecmisOda" onchange="renderGecmis()">
               <option value="">Tümü</option>
             </select>
           </div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="gecmisSadeceDevamsiz" onchange="renderGecmis()" /> Sadece devamsız/izinli olan grupları göster
+        </label>
       </div>
       <div id="gecmisSonuc"></div>
     </div>
@@ -404,6 +410,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
-<script src="app.js"></script>
+<script>document.write('<script src="app.js?v=' + Date.now() + '"><\/script>');</script>
 </body>
 </html>

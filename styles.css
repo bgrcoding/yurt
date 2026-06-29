@@ -83,17 +83,17 @@ h1, h2, h3, p { margin-top: 0; }
   color: var(--ink);
   padding-left: 0.04em;
 }
-.brand-divider {
-  color: var(--line-strong);
-  font-weight: 300;
-  margin: 0 0.4em 0 0.3em;
-}
 .brand-sub {
   font-family: 'Space Grotesk', -apple-system, sans-serif;
-  color: var(--muted);
+  color: var(--accent);
+  background: var(--accent-soft);
   font-weight: 700;
-  letter-spacing: 0.12em;
-  font-size: 0.9em;
+  letter-spacing: 0.16em;
+  font-size: 0.6em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  margin-left: 0.55em;
+  align-self: center;
 }
 
 .nav-spacer { flex: 1; }
