@@ -12,14 +12,18 @@ let pendingCamdataOgrenci = null; // { name, class_name }
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
   setTodayDefaults();
+  // Lokal önizlemede seçim ekranı ayrı portta; adrese göre logo hedefini ayarla.
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    const nb = document.getElementById('navBrand');
+    if (nb) nb.href = 'http://localhost:5180/';
+  }
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     currentUser = session.user;
     isAdmin = true;
-    showApp();
-  } else {
-    showAuth();
   }
+  // Camdata gibi: panel her zaman açılır; giriş yoksa misafir (salt-okunur)
+  showApp();
 });
 
 function setTodayDefaults() {
@@ -54,6 +58,8 @@ async function doLogin() {
   }
   currentUser = data.user;
   isAdmin = true;
+  closeModal('modalLogin');
+  toast('Giriş yapıldı ✓');
   showApp();
 }
 
@@ -64,21 +70,20 @@ async function logout() {
   location.reload();
 }
 
-function showGuestView() {
-  isAdmin = false;
-  showApp();
-}
-
-function showAuth() {
-  document.getElementById('authScreen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('mainNav').style.display = 'none';
+function openLoginModal() {
+  document.getElementById('authError').style.display = 'none';
+  document.getElementById('authPassword').value = '';
+  openModal('modalLogin');
+  setTimeout(() => document.getElementById('authEmail').focus(), 100);
 }
 
 function showApp() {
-  document.getElementById('authScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('mainNav').style.display = 'flex';
+
+  // Giriş/Çıkış butonlarını role göre göster
+  document.getElementById('navLoginBtn').style.display = isAdmin ? 'none' : '';
+  document.getElementById('navLogoutBtn').style.display = isAdmin ? '' : 'none';
 
   if (isAdmin) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
@@ -100,6 +105,7 @@ function showPage(name) {
   if (navBtn) navBtn.classList.add('active');
 
   if (name === 'dashboard') loadDashboard();
+  if (name === 'program') loadProgram();
   if (name === 'odalar') loadRooms();
   if (name === 'yoklama') loadYoklamaOdalar();
   if (name === 'arama') document.getElementById('aramaResults').innerHTML = '';
@@ -134,7 +140,7 @@ async function loadDashboard() {
     r._students   = students.filter(s => s.room_id === r.id).length;
     r._pts        = penalties.filter(p => p.room_id === r.id).reduce((a, b) => a + (b.points || 0), 0);
     r._absGece    = rollcalls.filter(x => x.room_id === r.id && x.type === 'gece' && x.status === 'yok').length;
-    r._absDers    = rollcalls.filter(x => x.room_id === r.id && x.type === 'ders' && x.status === 'yok').length;
+    r._absDers    = rollcalls.filter(x => x.room_id === r.id && x.type !== 'gece' && x.status === 'yok').length;
     const warns   = warnings.filter(w => w.room_id === r.id);
     r._warnCount  = warns.length;
     r._lastWarn   = warns[0]?.message || '—';
@@ -204,6 +210,142 @@ function sortDashboard(col) {
     dashboardSort.asc = col === 'id';
   }
   renderDashboardTable();
+}
+
+// ── PROGRAM (Haftalık çizelge — Excel mantığı) ──
+let programData = null;     // { title, days, rows: [{ time, cells: [...] }] }
+let programEditing = false;
+
+function getDefaultProgram() {
+  const days = ['PAZARTESİ', 'SALI', 'ÇARŞAMBA', 'PERŞEMBE', 'CUMA', 'CUMARTESİ', 'PAZAR'];
+  const R = (time, ...cells) => ({ time, cells });
+  // 7 günlük tek değer
+  const all = (time, v) => R(time, v, v, v, v, v, v, v);
+  // Pzt-Cuma dolu, Cmt/Pazar boş
+  const wd = (time, v, friday) => R(time, v, v, v, v, friday ?? v, '', '');
+  const rows = [
+    all('04:45', 'KALKIŞ'),
+    all('05:00', 'SABAH NAMAZI'),
+    all('05:20-07:20', 'ÇALIŞMA'),
+    R('07:30-08:00', 'KAHVALTI', 'KAHVALTI', 'KAHVALTI', 'KAHVALTI', 'KAHVALTI', '', ''),
+    R('09:00-10:15', '1.BLOK DERS', '1.BLOK DERS', '1.BLOK DERS', '1.BLOK DERS', '1.BLOK DERS 9.00-10.10', '', ''),
+    R('10:15-10:25', 'TENEFFÜS', 'TENEFFÜS', 'TENEFFÜS', 'TENEFFÜS', 'TENEFFÜS 10.10-10.20', 'KAHVALTI 10.00-10.50', 'KAHVALTI 10.00-10.50'),
+    R('10:25-11:40', '2.BLOK DERS', '2.BLOK DERS', '2.BLOK DERS', '2.BLOK DERS', '2.BLOK DERS 10.20-11.30', 'DENEME SINAVI BAŞLANGIÇ: 11.00', ''),
+    R('11:40-11:50', 'TENEFFÜS', 'TENEFFÜS', 'TENEFFÜS', 'TENEFFÜS', 'TENEFFÜS 11.30-11.40', '', ''),
+    R('11:50-13:05', '3.BLOK DERS', '3.BLOK DERS', '3.BLOK DERS', '3.BLOK DERS', '3.BLOK DERS 11.40-12.50', '', ''),
+    R('13:40-14:10', 'ÖĞLE YEMEĞİ', 'ÖĞLE YEMEĞİ', 'ÖĞLE YEMEĞİ', 'ÖĞLE YEMEĞİ', 'ÖĞLE YEMEĞİ / CUMA NAMAZI', '', 'TATİL (ÖĞLE YEMEĞİ CUMARTESİ)'),
+    R('14:10-15:30', 'SERBEST ZAMAN', 'SERBEST ZAMAN', 'SERBEST ZAMAN', 'SERBEST ZAMAN', 'SERBEST ZAMAN', 'TATİL', ''),
+    R('16:00-17:00', '1.ETÜT', '1.ETÜT', '1.ETÜT', '1.ETÜT', '1.ETÜT', '', ''),
+    R('16:50-17:10', 'İKİNDİ NAMAZI', 'İKİNDİ NAMAZI', 'İKİNDİ NAMAZI', 'İKİNDİ NAMAZI', 'İKİNDİ NAMAZI', '', ''),
+    R('17:10-18:10', '2.ETÜT', '2.ETÜT', '2.ETÜT', '2.ETÜT', '2.ETÜT', '', ''),
+    all('18:10-18:40', 'AKŞAM YEMEĞİ'),
+    R('18:50-19:50', '3.ETÜT', '3.ETÜT', '3.ETÜT', '3.ETÜT', '3.ETÜT', 'SERBEST ZAMAN', 'SERBEST ZAMAN'),
+    R('20:00-20:40', 'KİTAP OKUMA', 'KİTAP OKUMA', 'KİTAP OKUMA', 'KİTAP OKUMA', 'KİTAP OKUMA', '', ''),
+    all('20:50-21:10', 'AKŞAM NAMAZI'),
+    all('21:10-22:30', 'SERBEST ZAMAN'),
+    all('22:30-23:00', 'YATSI NAMAZI'),
+    all('23:30', 'YATIŞ'),
+  ];
+  return { title: 'BOLU TYT KAMPI 2026 — HAFTALIK PROGRAM', days, rows };
+}
+
+async function loadProgram() {
+  // Düzenleme modunda sayfaya dönülürse mevcut düzeni koru
+  if (programEditing) return;
+  const { data, error } = await sb.from('program').select('data').eq('id', 'main').single();
+  if (error && error.code !== 'PGRST116') {
+    // PGRST116 = satır yok; diğer hatalar (örn. tablo yok) için varsayılanı göster
+    console.warn('Program okunamadı:', error.message);
+  }
+  programData = (data && data.data) ? data.data : getDefaultProgram();
+  // Eksik alanları tamamla
+  if (!programData.days) programData.days = getDefaultProgram().days;
+  if (!programData.rows) programData.rows = getDefaultProgram().rows;
+  renderProgram();
+}
+
+function renderProgram() {
+  document.getElementById('programTitle').textContent = programData.title || '';
+  const head = document.getElementById('programHead');
+  const body = document.getElementById('programBody');
+  const days = programData.days;
+
+  head.innerHTML = `<tr>
+    <th>SAAT</th>
+    ${days.map(d => `<th>${escapeHtml(d)}</th>`).join('')}
+    ${programEditing ? '<th class="del-col"></th>' : ''}
+  </tr>`;
+
+  body.innerHTML = programData.rows.map((row, ri) => {
+    const ed = programEditing ? 'contenteditable="true"' : '';
+    const timeCell = `<td ${ed} data-r="${ri}" data-c="time">${escapeHtml(row.time)}</td>`;
+    const cells = days.map((_, ci) =>
+      `<td ${ed} data-r="${ri}" data-c="${ci}">${escapeHtml(row.cells[ci] ?? '')}</td>`
+    ).join('');
+    const del = programEditing
+      ? `<td class="del-col"><span class="program-row-del" onclick="deleteProgramRow(${ri})" title="Satırı sil">✕</span></td>`
+      : '';
+    return `<tr>${timeCell}${cells}${del}</tr>`;
+  }).join('');
+
+  document.getElementById('programTable').classList.toggle('editing', programEditing);
+}
+
+function toggleProgramEdit() {
+  programEditing = true;
+  document.getElementById('programEditBtn').style.display = 'none';
+  document.getElementById('programSaveBtn').style.display = '';
+  document.getElementById('programCancelBtn').style.display = '';
+  document.getElementById('programEditTools').style.display = '';
+  document.getElementById('programTitle').setAttribute('contenteditable', 'true');
+  renderProgram();
+}
+
+function exitProgramEditUI() {
+  programEditing = false;
+  document.getElementById('programEditBtn').style.display = '';
+  document.getElementById('programSaveBtn').style.display = 'none';
+  document.getElementById('programCancelBtn').style.display = 'none';
+  document.getElementById('programEditTools').style.display = 'none';
+  document.getElementById('programTitle').setAttribute('contenteditable', 'false');
+}
+
+function cancelProgramEdit() {
+  exitProgramEditUI();
+  loadProgram();
+}
+
+// DOM'daki düzenlenmiş hücreleri programData'ya geri yaz
+function collectProgramFromDOM() {
+  programData.title = document.getElementById('programTitle').textContent.trim();
+  document.querySelectorAll('#programBody td[data-r]').forEach(td => {
+    const r = parseInt(td.dataset.r);
+    const c = td.dataset.c;
+    const val = td.textContent.trim();
+    if (c === 'time') programData.rows[r].time = val;
+    else programData.rows[r].cells[parseInt(c)] = val;
+  });
+}
+
+function addProgramRow() {
+  collectProgramFromDOM();
+  programData.rows.push({ time: '', cells: programData.days.map(() => '') });
+  renderProgram();
+}
+
+function deleteProgramRow(ri) {
+  collectProgramFromDOM();
+  programData.rows.splice(ri, 1);
+  renderProgram();
+}
+
+async function saveProgram() {
+  collectProgramFromDOM();
+  const { error } = await sb.from('program').upsert({ id: 'main', data: programData, updated_at: new Date().toISOString() });
+  if (error) { toast('Hata: ' + error.message); return; }
+  exitProgramEditUI();
+  toast('Program kaydedildi ✓');
+  renderProgram();
 }
 
 // ── ROOMS ──
@@ -339,7 +481,7 @@ async function loadYoklamalar() {
       : r.status === 'yok'
       ? '<span class="badge badge-danger">Yok</span>'
       : '<span class="badge badge-warning">İzinli</span>';
-    const turBadge = r.type === 'gece' ? '🌙 Gece' : '📚 Ders';
+    const turBadge = turLabel(r.type);
     return `<tr>
       <td>${fmtDate(r.date)}</td>
       <td>${r.time||'—'}</td>
@@ -407,9 +549,101 @@ async function deleteUyari(id) {
 // ── YOKLAMA ALMA ──
 async function loadYoklamaOdalar() {
   const { data } = await sb.from('rooms').select('id').order('id');
-  const sel = document.getElementById('yoklamaOda');
-  sel.innerHTML = (data||[]).map(r => `<option value="${r.id}">Oda ${r.id}</option>`).join('');
+  const rooms = data || [];
+  const opts = rooms.map(r => `<option value="${r.id}">Oda ${r.id}</option>`).join('');
+  document.getElementById('yoklamaOda').innerHTML = opts;
+  document.getElementById('gecmisOda').innerHTML = '<option value="">Tüm odalar</option>' + opts;
   document.getElementById('yoklamaListesi').style.display = 'none';
+}
+
+// ── YOKLAMA SEKMELERİ ──
+function switchYoklamaTab(tab) {
+  const al = tab === 'al';
+  document.getElementById('yokTabAlBtn').classList.toggle('active', al);
+  document.getElementById('yokTabGecmisBtn').classList.toggle('active', !al);
+  document.getElementById('yokViewAl').classList.toggle('active', al);
+  document.getElementById('yokViewGecmis').classList.toggle('active', !al);
+  if (!al) {
+    // Geçmiş sekmesine ilk geçişte bugünü seç ve yükle
+    const t = document.getElementById('gecmisTarih');
+    if (!t.value) t.value = new Date().toISOString().split('T')[0];
+    loadGecmisYoklama();
+  }
+}
+
+async function loadGecmisYoklama() {
+  const tarih = document.getElementById('gecmisTarih').value;
+  const oda = document.getElementById('gecmisOda').value;
+  const wrap = document.getElementById('gecmisSonuc');
+  if (!tarih) { wrap.innerHTML = '<p style="color:var(--muted)">Lütfen tarih seçin.</p>'; return; }
+
+  wrap.innerHTML = '<div class="spinner"></div>';
+  let q = sb.from('rollcalls').select('*').eq('date', tarih);
+  if (oda) q = q.eq('room_id', oda);
+  const { data, error } = await q.order('room_id').order('time').order('student_name');
+  if (error) { wrap.innerHTML = `<p style="color:var(--danger)">Hata: ${error.message}</p>`; return; }
+
+  const rows = data || [];
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>${fmtDate(tarih)} için yoklama kaydı yok.</p></div>`;
+    return;
+  }
+
+  // Oda + tür + saat'e göre grupla
+  const groups = {};
+  rows.forEach(r => {
+    const key = `${r.room_id}|${r.type}|${r.time || ''}`;
+    (groups[key] = groups[key] || []).push(r);
+  });
+
+  wrap.innerHTML = Object.entries(groups).map(([key, list]) => {
+    const [room_id, type, time] = key.split('|');
+    const turBadge = turLabel(type);
+    const yokSayisi = list.filter(r => r.status === 'yok').length;
+    const izinSayisi = list.filter(r => r.status === 'izin').length;
+    const ids = list.map(r => r.id);
+    const delBtn = isAdmin
+      ? `<button class="btn btn-danger btn-sm" onclick='deleteGecmisYoklama(${JSON.stringify(ids)})'>Bu yoklamayı sil</button>`
+      : '';
+    return `
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <strong style="font-size:16px">Oda ${room_id}</strong>
+            <span class="badge badge-accent" style="margin-left:8px">${turBadge}</span>
+            ${time ? `<span style="color:var(--muted);font-size:13px;margin-left:6px">${time}</span>` : ''}
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${yokSayisi ? `<span class="badge badge-danger">${yokSayisi} yok</span>` : ''}
+            ${izinSayisi ? `<span class="badge badge-warning">${izinSayisi} izinli</span>` : ''}
+            ${delBtn}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
+            <tbody>
+              ${list.map(r => {
+                const sb2 = r.status === 'var'
+                  ? '<span class="badge badge-success">Var</span>'
+                  : r.status === 'yok'
+                  ? '<span class="badge badge-danger">Yok</span>'
+                  : '<span class="badge badge-warning">İzinli</span>';
+                return `<tr><td>${r.student_name}</td><td>${sb2}</td><td><span class="note-chip">${r.note || '—'}</span></td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function deleteGecmisYoklama(ids) {
+  if (!confirm('Bu yoklama kaydını silmek istediğinize emin misiniz?')) return;
+  const { error } = await sb.from('rollcalls').delete().in('id', ids);
+  if (error) { toast('Hata: ' + error.message); return; }
+  toast('Yoklama silindi');
+  loadGecmisYoklama();
 }
 
 async function loadYoklamaOgrenciler() {
@@ -425,9 +659,9 @@ async function loadYoklamaOgrenciler() {
       <td>${s.student_name}</td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="status-btn var" onclick="setStatus(${i},'var')">Var</button>
-          <button class="status-btn yok" onclick="setStatus(${i},'yok')">Yok</button>
-          <button class="status-btn izin" onclick="setStatus(${i},'izin')">İzinli</button>
+          <button class="status-btn" data-st="var" onclick="setStatus(${i},'var')">Var</button>
+          <button class="status-btn" data-st="yok" onclick="setStatus(${i},'yok')">Yok</button>
+          <button class="status-btn" data-st="izin" onclick="setStatus(${i},'izin')">İzinli</button>
         </div>
       </td>
       <td><input class="input" style="width:160px;padding:6px 10px;font-size:13px" placeholder="Not..." data-note="${i}" /></td>
@@ -442,13 +676,22 @@ async function loadYoklamaOgrenciler() {
 function setStatus(idx, status) {
   const row = document.querySelectorAll('#yoklamaOgrencilerBody tr')[idx];
   row.querySelectorAll('.status-btn').forEach(b => b.classList.remove('var','yok','izin'));
-  row.querySelector(`.status-btn.${status === 'izin' ? 'izin' : status}`).classList.add(status === 'izin' ? 'izin' : status);
+  row.querySelector(`.status-btn[data-st="${status}"]`).classList.add(status);
   row.dataset.status = status;
+}
+
+function onYoklamaTurChange() {
+  const isEkstra = document.getElementById('yoklamaTur').value === '__ekstra__';
+  document.getElementById('yoklamaEkstraWrap').style.display = isEkstra ? '' : 'none';
 }
 
 async function saveYoklama() {
   const roomId = document.getElementById('yoklamaOda').value;
-  const tur = document.getElementById('yoklamaTur').value;
+  let tur = document.getElementById('yoklamaTur').value;
+  if (tur === '__ekstra__') {
+    tur = document.getElementById('yoklamaEkstraAd').value.trim();
+    if (!tur) { toast('Ekstra yoklama adı gerekli'); return; }
+  }
   const tarih = document.getElementById('yoklamaTarih').value;
   const saat = document.getElementById('yoklamaSaat').value;
   const by = currentUser?.email || 'misafir';
@@ -711,6 +954,27 @@ function fmtDate(d) {
   if (!d) return '—';
   const [y,m,day] = d.split('-');
   return `${day}.${m}.${y}`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Yoklama türü → rozet etiketi
+const TUR_LABELS = {
+  gece: '🌙 Gece',
+  etut1: '1. Etüt',
+  etut2: '2. Etüt',
+  etut3: '3. Etüt',
+  kitap: '📖 Kitap Okuma',
+  ders: '📚 Ders', // eski kayıtlar için
+};
+function turLabel(type) {
+  return TUR_LABELS[type] || type || '—';
 }
 
 let toastTimer;

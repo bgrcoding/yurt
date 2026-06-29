@@ -6,10 +6,10 @@
   --panel: #ffffff;
   --line: rgba(0, 0, 0, 0.08);
   --line-strong: rgba(0, 0, 0, 0.14);
-  --accent: #2563eb;
-  --accent-dark: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --accent-rgb: 37, 99, 235;
+  --accent: #1e3a8a;
+  --accent-dark: #152a63;
+  --accent-soft: #e9edf7;
+  --accent-rgb: 30, 58, 138;
   --danger: #d70015;
   --danger-soft: #fff1f2;
   --warning: #b25000;
@@ -58,17 +58,43 @@ h1, h2, h3, p { margin-top: 0; }
 }
 
 .nav-brand {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 19px;
   color: var(--ink);
   text-decoration: none;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 0;
+  line-height: 1;
+  user-select: none;
 }
 
-.nav-brand span { color: var(--accent); }
+.brand-line { display: flex; align-items: baseline; gap: 0; }
+
+.brand-cam {
+  font-family: 'Space Grotesk', -apple-system, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+}
+.brand-data {
+  font-family: 'Space Grotesk', -apple-system, sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+  padding-left: 0.04em;
+}
+.brand-divider {
+  color: var(--line-strong);
+  font-weight: 300;
+  margin: 0 0.4em 0 0.3em;
+}
+.brand-sub {
+  font-family: 'Space Grotesk', -apple-system, sans-serif;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-size: 0.9em;
+}
 
 .nav-spacer { flex: 1; }
 
@@ -483,6 +509,78 @@ tr.row-warning td { background: #fffbeb; }
 tr.row-warning:hover td { background: #fef3c7; }
 
 tr.dashboard-row { cursor: pointer; }
+
+/* ── PROGRAM TABLE ── */
+.program-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+  padding: 4px;
+  border-radius: 8px;
+}
+.program-title[contenteditable="true"] {
+  outline: 2px dashed var(--accent);
+  background: var(--accent-soft);
+}
+
+.program-table {
+  width: 100%;
+  min-width: 860px; /* telefonda yatay kaydırma için */
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.program-table th, .program-table td {
+  border: 1px solid var(--line-strong);
+  padding: 6px 8px;
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.program-table thead th {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.program-table thead th:first-child { background: var(--accent-dark); }
+.program-table tbody td:first-child {
+  background: var(--soft);
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  width: 90px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.program-table tbody tr:hover td { background: rgba(var(--accent-rgb), 0.04); }
+.program-table tbody tr:hover td:first-child { background: var(--accent-soft); }
+
+/* Düzenleme modu */
+.program-table.editing td[contenteditable="true"] {
+  background: #fffdf5;
+  cursor: text;
+}
+.program-table.editing td[contenteditable="true"]:focus {
+  outline: 2px solid var(--accent);
+  background: #fff;
+}
+.program-row-del {
+  cursor: pointer;
+  color: var(--danger);
+  font-weight: 700;
+  user-select: none;
+}
+.program-table .del-col { width: 32px; }
 
 /* ── RESPONSIVE ── */
 @media (max-width: 600px) {

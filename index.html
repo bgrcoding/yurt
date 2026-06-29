@@ -3,46 +3,47 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YURT — Yurt Yönetim Sistemi</title>
+  <title>ÇAMDATA YURT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
 <!-- NAV -->
 <nav class="nav" id="mainNav" style="display:none">
-  <a class="nav-brand" href="#"><span>🏠</span> YURT</a>
+  <a class="nav-brand" id="navBrand" href="https://camdata.online" title="Sistem seçimine dön"><span class="brand-cam">ÇAM</span><span class="brand-data">DATA</span><span class="brand-divider">|</span><span class="brand-sub">YURT</span></a>
   <div class="nav-spacer"></div>
   <button class="nav-btn" id="navDashboard" onclick="showPage('dashboard')">Dashboard</button>
+  <button class="nav-btn" id="navProgram" onclick="showPage('program')">Program</button>
   <button class="nav-btn" id="navOdalar" onclick="showPage('odalar')">Odalar</button>
-  <button class="nav-btn" id="navYoklama" onclick="showPage('yoklama')">Yoklama Al</button>
+  <button class="nav-btn" id="navYoklama" onclick="showPage('yoklama')">Yoklama</button>
   <button class="nav-btn" id="navArama" onclick="showPage('arama')">Öğrenci Ara</button>
   <button class="nav-btn admin-only" id="navYonetim" onclick="showPage('yonetim')" style="display:none">Yönetim</button>
-  <button class="nav-auth-btn logout" onclick="logout()">Çıkış</button>
+  <button class="nav-auth-btn" id="navLoginBtn" onclick="openLoginModal()">Yönetici Girişi</button>
+  <button class="nav-auth-btn logout" id="navLogoutBtn" onclick="logout()" style="display:none">Çıkış</button>
 </nav>
 
-<!-- AUTH SCREEN -->
-<div id="authScreen" class="auth-wrap">
-  <div class="card" style="width:100%;max-width:400px">
-    <div style="text-align:center;margin-bottom:28px">
-      <div style="font-size:48px;margin-bottom:8px">🏠</div>
-      <h2 style="font-size:24px;margin:0">YURT</h2>
-      <p style="color:var(--muted);margin:4px 0 0;font-size:14px">Yurt Yönetim Sistemi</p>
+<!-- LOGIN MODAL -->
+<div class="modal-backdrop" id="modalLogin">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h3 class="modal-title">Yönetici Girişi</h3>
+      <button class="modal-close" onclick="closeModal('modalLogin')">✕</button>
     </div>
     <div class="field">
       <label>E-posta</label>
-      <input class="input" type="email" id="authEmail" placeholder="ornek@okul.com" />
+      <input class="input" type="email" id="authEmail" />
     </div>
     <div class="field">
       <label>Şifre</label>
-      <input class="input" type="password" id="authPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+      <input class="input" type="password" id="authPassword" onkeydown="if(event.key==='Enter')doLogin()" />
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="doLogin()" id="loginBtn">
       Giriş Yap
     </button>
     <p id="authError" style="color:var(--danger);font-size:13px;margin:12px 0 0;text-align:center;display:none"></p>
-    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);text-align:center">
-      <button class="btn btn-ghost btn-sm" onclick="showGuestView()">Öğrenci Girişi (Oda Arama)</button>
-    </div>
   </div>
 </div>
 
@@ -69,7 +70,7 @@
             <th class="sortable" onclick="sortDashboard('_students')">Öğrenci <span id="sort__students"></span></th>
             <th class="sortable" onclick="sortDashboard('_pts')">Ceza Puanı <span id="sort__pts"></span></th>
             <th class="sortable" onclick="sortDashboard('_absGece')">Gece Devamsız <span id="sort__absGece"></span></th>
-            <th class="sortable" onclick="sortDashboard('_absDers')">Ders Devamsız <span id="sort__absDers"></span></th>
+            <th class="sortable" onclick="sortDashboard('_absDers')">Etüt Devamsız <span id="sort__absDers"></span></th>
             <th class="sortable" onclick="sortDashboard('_warnCount')">Uyarı Sayısı <span id="sort__warnCount"></span></th>
             <th>Son Uyarı</th>
           </tr>
@@ -78,6 +79,34 @@
           <tr><td colspan="7"><div class="spinner"></div></td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- SAYFA: PROGRAM -->
+  <div class="page" id="pageProgram">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Program</h1>
+        <p class="page-subtitle" id="programSubtitle">Haftalık kamp programı</p>
+      </div>
+      <div style="display:flex;gap:8px" class="admin-only">
+        <button class="btn btn-ghost btn-sm" id="programEditBtn" onclick="toggleProgramEdit()">✎ Düzenle</button>
+        <button class="btn btn-primary btn-sm" id="programSaveBtn" onclick="saveProgram()" style="display:none">Kaydet</button>
+        <button class="btn btn-ghost btn-sm" id="programCancelBtn" onclick="cancelProgramEdit()" style="display:none">İptal</button>
+      </div>
+    </div>
+
+    <h2 id="programTitle" class="program-title" contenteditable="false">BOLU TYT KAMPI 2026 — HAFTALIK PROGRAM</h2>
+
+    <div class="card table-wrap" style="padding:0">
+      <table class="program-table" id="programTable">
+        <thead id="programHead"></thead>
+        <tbody id="programBody"></tbody>
+      </table>
+    </div>
+
+    <div class="admin-only" id="programEditTools" style="display:none;margin-top:12px">
+      <button class="btn btn-ghost btn-sm" onclick="addProgramRow()">+ Satır Ekle</button>
     </div>
   </div>
 
@@ -164,47 +193,83 @@
     </div>
   </div>
 
-  <!-- SAYFA: YOKLAMA AL -->
+  <!-- SAYFA: YOKLAMA -->
   <div class="page" id="pageYoklama">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Yoklama Al</h1>
-        <p class="page-subtitle">Seçilen oda için yoklama yap</p>
+        <h1 class="page-title">Yoklama</h1>
+        <p class="page-subtitle">Yoklama al veya geçmiş yoklamaları gör</p>
       </div>
-    </div>
-    <div class="card" style="max-width:600px;margin-bottom:20px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="field" style="margin:0">
-          <label>Oda</label>
-          <select class="input" id="yoklamaOda"></select>
-        </div>
-        <div class="field" style="margin:0">
-          <label>Tür</label>
-          <select class="input" id="yoklamaTur">
-            <option value="gece">Gece Yoklaması</option>
-            <option value="ders">Ders Yoklaması</option>
-          </select>
-        </div>
-        <div class="field" style="margin:0">
-          <label>Tarih</label>
-          <input class="input" type="date" id="yoklamaTarih" />
-        </div>
-        <div class="field" style="margin:0">
-          <label>Saat</label>
-          <input class="input" type="time" id="yoklamaSaat" />
-        </div>
-      </div>
-      <button class="btn btn-primary" style="margin-top:16px" onclick="loadYoklamaOgrenciler()">Öğrencileri Getir</button>
     </div>
 
-    <div id="yoklamaListesi" style="display:none">
-      <div class="card table-wrap" style="margin-bottom:16px">
-        <table>
-          <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
-          <tbody id="yoklamaOgrencilerBody"></tbody>
-        </table>
+    <div class="detail-tabs">
+      <button class="tab-btn active" id="yokTabAlBtn" onclick="switchYoklamaTab('al')">Yoklama Al</button>
+      <button class="tab-btn" id="yokTabGecmisBtn" onclick="switchYoklamaTab('gecmis')">Geçmiş</button>
+    </div>
+
+    <!-- View: Yoklama Al -->
+    <div class="view active" id="yokViewAl">
+      <div class="card" style="max-width:600px;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="field" style="margin:0">
+            <label>Oda</label>
+            <select class="input" id="yoklamaOda"></select>
+          </div>
+          <div class="field" style="margin:0">
+            <label>Tür</label>
+            <select class="input" id="yoklamaTur" onchange="onYoklamaTurChange()">
+              <option value="gece">Gece Yoklaması</option>
+              <option value="etut1">1. Etüt</option>
+              <option value="etut2">2. Etüt</option>
+              <option value="etut3">3. Etüt</option>
+              <option value="kitap">Kitap Okuma Etüdü</option>
+              <option value="__ekstra__">+ Ekstra (özel) yoklama…</option>
+            </select>
+          </div>
+          <div class="field" style="margin:0">
+            <label>Tarih</label>
+            <input class="input" type="date" id="yoklamaTarih" />
+          </div>
+          <div class="field" style="margin:0">
+            <label>Saat</label>
+            <input class="input" type="time" id="yoklamaSaat" />
+          </div>
+          <div class="field" id="yoklamaEkstraWrap" style="margin:0;grid-column:1/-1;display:none">
+            <label>Ekstra Yoklama Adı</label>
+            <input class="input" id="yoklamaEkstraAd" placeholder="Örn. Sabah Sporu, Akşam Yoklaması..." />
+          </div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="loadYoklamaOgrenciler()">Öğrencileri Getir</button>
       </div>
-      <button class="btn btn-primary" onclick="saveYoklama()">Yoklamayı Kaydet</button>
+
+      <div id="yoklamaListesi" style="display:none">
+        <div class="card table-wrap" style="margin-bottom:16px">
+          <table>
+            <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
+            <tbody id="yoklamaOgrencilerBody"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-primary" onclick="saveYoklama()">Yoklamayı Kaydet</button>
+      </div>
+    </div>
+
+    <!-- View: Geçmiş -->
+    <div class="view" id="yokViewGecmis">
+      <div class="card" style="max-width:600px;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="field" style="margin:0">
+            <label>Tarih</label>
+            <input class="input" type="date" id="gecmisTarih" onchange="loadGecmisYoklama()" />
+          </div>
+          <div class="field" style="margin:0">
+            <label>Oda (opsiyonel)</label>
+            <select class="input" id="gecmisOda" onchange="loadGecmisYoklama()">
+              <option value="">Tüm odalar</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div id="gecmisSonuc"></div>
     </div>
   </div>
 
