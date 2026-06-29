@@ -451,7 +451,7 @@ async function loadSakinler() {
     <tr>
       <td><strong>${s.student_name}</strong></td>
       <td>${s.class_name || '—'}</td>
-      <td class="admin-only">${sinifSelect}</td>
+      <td>${isAdmin ? sinifSelect : (s.etut_sinif || '—')}</td>
       <td class="admin-only" style="white-space:nowrap">
         <button class="btn btn-ghost btn-sm" onclick="openSakinDuzenle('${s.id}')">Düzenle</button>
         <button class="btn btn-ghost btn-sm" onclick="removeSakin('${s.id}')">Çıkar</button>
