@@ -619,7 +619,19 @@ tr.dashboard-row { cursor: pointer; }
 /* ── RESPONSIVE ── */
 @media (max-width: 600px) {
   .page { padding: 20px 16px; }
-  .nav { padding: 0 16px; }
+  .nav {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    gap: 8px 6px;
+  }
+  .nav-spacer { display: none; }
+  .nav-brand { flex-basis: 100%; }
+  .nav-btn,
+  .nav-auth-btn {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
   .room-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
   .page-header { flex-direction: column; align-items: stretch; }
   .stats-row { grid-template-columns: 1fr 1fr; }
