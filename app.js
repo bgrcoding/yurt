@@ -24,10 +24,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const nb = document.getElementById('navBrand');
     if (nb) nb.href = 'http://localhost:5180/';
   }
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    currentUser = session.user;
-    isAdmin = true;
+  // Oturum kontrolü ağ hatası verirse bile panel AÇILMALI; yoksa sayfa boş kalır.
+  // (try/catch olmadan getSession patlarsa showApp hiç çalışmaz → "ara sıra açılmıyor")
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      currentUser = session.user;
+      isAdmin = true;
+    }
+  } catch (e) {
+    console.error('Oturum alınamadı, misafir olarak açılıyor:', e);
   }
   // Camdata gibi: panel her zaman açılır; giriş yoksa misafir (salt-okunur)
   showApp();
