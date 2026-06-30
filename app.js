@@ -527,6 +527,15 @@ async function saveSakinDuzenle() {
 }
 
 // ── YOKLAMALAR ──
+// Durum rozetini tek yerden üret (var/yok/geç/izin). Bilinmeyen/eski değerler İzinli sayılmaz,
+// olduğu gibi gösterilmesin diye sadece tanımlı 4 durumu kapsar.
+function durumBadge(status) {
+  if (status === 'var')  return '<span class="badge badge-success">Var</span>';
+  if (status === 'yok')  return '<span class="badge badge-danger">Yok</span>';
+  if (status === 'gec')  return '<span class="badge badge-accent">Geç</span>';
+  return '<span class="badge badge-warning">İzinli</span>';
+}
+
 async function loadYoklamalar() {
   const { data } = await sb.from('rollcalls').select('*').eq('room_id', currentRoomId).order('date', { ascending: false }).order('time', { ascending: false });
   const tbody = document.getElementById('yoklamalarBody');
@@ -535,11 +544,7 @@ async function loadYoklamalar() {
     return;
   }
   tbody.innerHTML = data.map(r => {
-    const statusBadge = r.status === 'var'
-      ? '<span class="badge badge-success">Var</span>'
-      : r.status === 'yok'
-      ? '<span class="badge badge-danger">Yok</span>'
-      : '<span class="badge badge-warning">İzinli</span>';
+    const statusBadge = durumBadge(r.status);
     const turBadge = turLabel(r.type);
     return `<tr>
       <td>${fmtDate(r.date)}</td>
@@ -643,6 +648,7 @@ function renderGecmis() {
     if (type !== sonTur) { html += `<h3 style="margin:20px 0 10px;font-size:16px">${turLabel(type)}</h3>`; sonTur = type; }
     const unitLabel = unit.startsWith('oda:') ? `Oda ${unit.slice(4)}` : unit.slice(6);
     const yokSayisi = list.filter(r => r.status === 'yok').length;
+    const gecSayisi = list.filter(r => r.status === 'gec').length;
     const izinSayisi = list.filter(r => r.status === 'izin').length;
     const ids = list.map(r => r.id);
     const delBtn = isAdmin
@@ -657,8 +663,9 @@ function renderGecmis() {
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${yokSayisi ? `<span class="badge badge-danger">${yokSayisi} yok</span>` : ''}
+            ${gecSayisi ? `<span class="badge badge-accent">${gecSayisi} geç</span>` : ''}
             ${izinSayisi ? `<span class="badge badge-warning">${izinSayisi} izinli</span>` : ''}
-            ${(!yokSayisi && !izinSayisi) ? `<span class="badge badge-success">Tam</span>` : ''}
+            ${(!yokSayisi && !gecSayisi && !izinSayisi) ? `<span class="badge badge-success">Tam</span>` : ''}
             ${delBtn}
           </div>
         </div>
@@ -667,11 +674,7 @@ function renderGecmis() {
             <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
             <tbody>
               ${list.map(r => {
-                const sb2 = r.status === 'var'
-                  ? '<span class="badge badge-success">Var</span>'
-                  : r.status === 'yok'
-                  ? '<span class="badge badge-danger">Yok</span>'
-                  : '<span class="badge badge-warning">İzinli</span>';
+                const sb2 = durumBadge(r.status);
                 return `<tr><td>${r.student_name}</td><td>${sb2}</td><td><span class="note-chip">${r.note || '—'}</span></td></tr>`;
               }).join('')}
             </tbody>
@@ -777,7 +780,7 @@ async function loadYoklamaTumu() {
             const hasNote = !!pre.note;
             return `<div class="yok-row st-${pre.status}" data-name="${escapeAttr(name)}" data-status="${pre.status}">
               <span class="yok-name">${name}</span>
-              <span class="yok-seg" role="group" aria-label="Durum">${seg(pre.status, 'var', 'Var')}${seg(pre.status, 'yok', 'Yok')}${seg(pre.status, 'izin', 'İzinli')}</span>
+              <span class="yok-seg" role="group" aria-label="Durum">${seg(pre.status, 'var', 'Var')}${seg(pre.status, 'yok', 'Yok')}${seg(pre.status, 'gec', 'Geç')}${seg(pre.status, 'izin', 'İzinli')}</span>
               <button class="yok-note-toggle${hasNote ? ' has-note' : ''}" title="Not" onclick="toggleYokNote(this)" type="button" aria-label="Not ekle">✎</button>
               <input class="input yok-note" data-note placeholder="Not..." value="${escapeAttr(pre.note)}"${hasNote ? '' : ' hidden'} />
             </div>`;
@@ -794,7 +797,7 @@ function markStatus(btn, status) {
   const row = btn.closest('.yok-row');
   row.querySelectorAll('.yok-seg-btn').forEach(b => b.classList.toggle('active', b.dataset.st === status));
   row.dataset.status = status;
-  row.classList.remove('st-var', 'st-yok', 'st-izin');
+  row.classList.remove('st-var', 'st-yok', 'st-gec', 'st-izin');
   row.classList.add('st-' + status);
   updateYoklamaOzet();
 }
@@ -810,20 +813,28 @@ function toggleYokNote(btn) {
 // Sticky özet barı + grup başlıklarındaki canlı "yok/izinli" sayacı.
 function updateYoklamaOzet() {
   const groups = document.querySelectorAll('#yoklamaGruplar [data-group-key]');
-  let topYok = 0, topIzin = 0, topOgr = 0;
+  let topYok = 0, topGec = 0, topIzin = 0, topOgr = 0;
   groups.forEach(gEl => {
     const rows = gEl.querySelectorAll('.yok-row');
-    let gy = 0, gi = 0;
-    rows.forEach(r => { if (r.dataset.status === 'yok') gy++; else if (r.dataset.status === 'izin') gi++; });
-    topYok += gy; topIzin += gi; topOgr += rows.length;
+    let gy = 0, gg = 0, gi = 0;
+    rows.forEach(r => {
+      if (r.dataset.status === 'yok') gy++;
+      else if (r.dataset.status === 'gec') gg++;
+      else if (r.dataset.status === 'izin') gi++;
+    });
+    topYok += gy; topGec += gg; topIzin += gi; topOgr += rows.length;
     const tally = gEl.querySelector('[data-tally]');
-    if (tally) tally.textContent = `${rows.length} öğrenci` + (gy || gi ? ` · ${gy} yok${gi ? ` · ${gi} izinli` : ''}` : '');
+    const ek = [gy ? `${gy} yok` : '', gg ? `${gg} geç` : '', gi ? `${gi} izinli` : ''].filter(Boolean).join(' · ');
+    if (tally) tally.textContent = `${rows.length} öğrenci` + (ek ? ` · ${ek}` : '');
   });
   const ozet = document.getElementById('yoklamaOzet');
+  const ekOzet = [
+    topYok ? `<span class="ozet-yok">${topYok} yok</span>` : '',
+    topGec ? `<span class="ozet-gec">${topGec} geç</span>` : '',
+    topIzin ? `<span class="ozet-izin">${topIzin} izinli</span>` : '',
+  ].filter(Boolean).join(' · ');
   if (ozet) ozet.innerHTML = `${groups.length} grup · ${topOgr} öğrenci` +
-    (topYok || topIzin
-      ? ` · <span class="ozet-yok">${topYok} yok</span>${topIzin ? ` · <span class="ozet-izin">${topIzin} izinli</span>` : ''}`
-      : ' · tümü var');
+    (ekOzet ? ` · ${ekOzet}` : ' · tümü var');
 }
 
 function onYoklamaTurChange() {

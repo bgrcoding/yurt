@@ -714,6 +714,7 @@ tr.dashboard-row.row-warning td.oda-cell::before {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .yok-row.st-yok  { background: var(--danger-soft); }
+.yok-row.st-gec  { background: var(--accent-soft); }
 .yok-row.st-izin { background: var(--warning-soft); }
 
 .yok-seg { flex: none; display: inline-flex; padding: 2px; background: var(--soft); border-radius: 9px; }
@@ -725,6 +726,7 @@ tr.dashboard-row.row-warning td.oda-cell::before {
 .yok-seg-btn.active { background: var(--panel); box-shadow: var(--shadow-sm); }
 .yok-seg-btn[data-st="var"].active  { color: var(--ink); }
 .yok-seg-btn[data-st="yok"].active  { color: var(--danger); }
+.yok-seg-btn[data-st="gec"].active  { color: var(--accent); }
 .yok-seg-btn[data-st="izin"].active { color: var(--warning); }
 
 .yok-note-toggle {
@@ -736,6 +738,7 @@ tr.dashboard-row.row-warning td.oda-cell::before {
 .yok-note { flex-basis: 100%; margin-top: 4px; padding: 7px 10px; font-size: 13px; }
 
 .ozet-yok { color: var(--danger); }
+.ozet-gec { color: var(--accent); }
 .ozet-izin { color: var(--warning); }
 
 @media (max-width: 600px) {
