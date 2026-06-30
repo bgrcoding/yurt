@@ -118,8 +118,11 @@ let dashboardData = [];
 let dashboardSort = { col: '_absGece', asc: false };
 
 async function loadDashboard() {
-  document.getElementById('dashboardBody').innerHTML = '<tr><td colspan="4"><div class="spinner"></div></td></tr>';
-  document.getElementById('dashboardStats').innerHTML = '';
+  // Yükleniyor: skeleton kartlar + tablo satırları (çıplak spinner yerine).
+  document.getElementById('dashboardStats').innerHTML = Array.from({ length: 6 }, () =>
+    `<div class="stat-card skeleton-card"><span class="skeleton sk-ic"></span><span class="stat-body"><span class="skeleton sk-line sm"></span><span class="skeleton sk-line lg"></span></span></div>`).join('');
+  document.getElementById('dashboardBody').innerHTML = Array.from({ length: 6 }, () =>
+    `<tr class="skeleton-row">${'<td><span class="skeleton sk-line"></span></td>'.repeat(5)}</tr>`).join('');
 
   const [roomsRes, studentsRes, rollRes] = await Promise.all([
     sb.from('rooms').select('id, name, floor').order('id'),
@@ -139,7 +142,10 @@ async function loadDashboard() {
   rooms.forEach(r => {
     r._students   = students.filter(s => s.room_id === r.id).length;
     r._absGece    = rollcalls.filter(x => x.room_id === r.id && x.type === 'gece' && x.status === 'yok').length;
-    r._absDers    = rollcalls.filter(x => x.type !== 'gece' && x.status === 'yok'
+    // Namaz (oda bazlı) artık etütten ayrı sayılır.
+    r._absNamaz   = rollcalls.filter(x => x.room_id === r.id && isNamaz(x.type) && x.status === 'yok').length;
+    // Etüt = yalnızca sınıf bazlı etüt/kitap türleri (namaz/ekstra hariç).
+    r._absDers    = rollcalls.filter(x => ETUT_TURLER.has(x.type) && x.status === 'yok'
                       && (x.room_id === r.id || (!x.room_id && stuRoom[x.student_name] === r.id))).length;
   });
 
@@ -147,14 +153,20 @@ async function loadDashboard() {
 
   // Özet istatistikler
   const totalStudents = rooms.reduce((a, r) => a + r._students, 0);
-  const totalGece = rooms.reduce((a, r) => a + (r._absGece || 0), 0);
-  const totalEtut = rooms.reduce((a, r) => a + (r._absDers || 0), 0);
-  document.getElementById('dashboardStats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Toplam Oda</div><div class="stat-value">${rooms.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Toplam Öğrenci</div><div class="stat-value">${totalStudents}</div></div>
-    <div class="stat-card"><div class="stat-label">Gece Devamsızlık</div><div class="stat-value">${totalGece}</div></div>
-    <div class="stat-card"><div class="stat-label">Etüt Devamsızlık</div><div class="stat-value">${totalEtut}</div></div>
-  `;
+  const totalGece  = rooms.reduce((a, r) => a + (r._absGece  || 0), 0);
+  const totalNamaz = rooms.reduce((a, r) => a + (r._absNamaz || 0), 0);
+  const totalEtut  = rooms.reduce((a, r) => a + (r._absDers  || 0), 0);
+  const totalDevamsiz = totalGece + totalNamaz + totalEtut;
+  const doluOda = rooms.filter(r => r._students > 0).length;
+  const ortOda  = rooms.length ? Math.round(totalStudents / rooms.length) : 0;
+  const odaSayisi = key => rooms.filter(r => (r[key] || 0) > 0).length;
+  document.getElementById('dashboardStats').innerHTML =
+      statCard(DASH_ICONS.oda,    'Toplam Oda',     rooms.length, `${doluOda} dolu`,                 '') +
+      statCard(DASH_ICONS.ogr,    'Toplam Öğrenci', totalStudents, `ort. ${ortOda}/oda`,            '') +
+      statCard(DASH_ICONS.gece,   'Gece Devamsız',  totalGece,    `${odaSayisi('_absGece')} odada`,  'danger') +
+      statCard(DASH_ICONS.namaz,  'Namaz Devamsız', totalNamaz,   `${odaSayisi('_absNamaz')} odada`, 'accent') +
+      statCard(DASH_ICONS.etut,   'Etüt Devamsız',  totalEtut,    `${odaSayisi('_absDers')} odada`,  'warning') +
+      statCard(DASH_ICONS.toplam, 'Toplam Devamsız', totalDevamsiz, 'gece + namaz + etüt',           'danger');
   document.getElementById('dashboardSubtitle').textContent = `${rooms.length} oda · ${totalStudents} öğrenci`;
 
   renderDashboardTable();
@@ -176,18 +188,24 @@ function renderDashboardTable() {
 
   const tbody = document.getElementById('dashboardBody');
   if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">Oda yok</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">🏠</div><p>Henüz oda yok.</p></div></td></tr>';
     return;
   }
 
+  // Devamsızlık hücresi: 0 ise muted "—", >0 ise ilgili renkte sayı.
+  const cell = (n, sev) => (n > 0
+    ? `<td class="num ${sev}">${n}</td>`
+    : `<td class="num zero">—</td>`);
+
   tbody.innerHTML = sorted.map(r => {
-    const toplamDevamsiz = (r._absGece || 0) + (r._absDers || 0);
+    const toplamDevamsiz = (r._absGece || 0) + (r._absNamaz || 0) + (r._absDers || 0);
     const rowClass = toplamDevamsiz >= 5 ? 'row-danger' : toplamDevamsiz >= 3 ? 'row-warning' : '';
     return `<tr class="dashboard-row ${rowClass}" onclick="goToRoom('${r.id}')">
-      <td><strong>${r.id}</strong>${r.name ? `<span style="color:var(--muted);font-size:12px;margin-left:6px">${r.name}</span>` : ''}</td>
-      <td>${r._students}</td>
-      <td>${r._absGece || '—'}</td>
-      <td>${r._absDers || '—'}</td>
+      <td class="oda-cell"><strong>${r.id}</strong>${r.name ? `<span style="color:var(--muted);font-size:12px;margin-left:6px">${r.name}</span>` : ''}</td>
+      <td class="num">${r._students}</td>
+      ${cell(r._absGece || 0, 'danger')}
+      ${cell(r._absNamaz || 0, 'accent')}
+      ${cell(r._absDers || 0, 'warning')}
     </tr>`;
   }).join('');
 }
@@ -404,19 +422,20 @@ async function refreshDetayAll() {
 async function loadDetayStats() {
   const stuRes = await sb.from('room_students').select('student_name').eq('room_id', currentRoomId);
   const names = (stuRes.data || []).map(s => s.student_name);
-  const [geceRes, digerOdaRes, digerSinifRes] = await Promise.all([
+  const [geceRes, namazRes, etutSinifRes] = await Promise.all([
     sb.from('rollcalls').select('id').eq('room_id', currentRoomId).eq('type', 'gece').eq('status', 'yok'),
-    sb.from('rollcalls').select('id').eq('room_id', currentRoomId).neq('type', 'gece').eq('status', 'yok'),
+    sb.from('rollcalls').select('id').eq('room_id', currentRoomId).in('type', NAMAZ_TURLER).eq('status', 'yok'),
     names.length
-      ? sb.from('rollcalls').select('id').is('room_id', null).eq('status', 'yok').in('student_name', names)
+      ? sb.from('rollcalls').select('id').is('room_id', null).in('type', [...ETUT_TURLER]).eq('status', 'yok').in('student_name', names)
       : Promise.resolve({ data: [] }),
   ]);
-  const gece = (geceRes.data || []).length;
-  const etut = (digerOdaRes.data || []).length + (digerSinifRes.data || []).length;
-  document.getElementById('detayStats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Gece Devamsız</div><div class="stat-value">${gece}</div></div>
-    <div class="stat-card"><div class="stat-label">Etüt Devamsız</div><div class="stat-value">${etut}</div></div>
-  `;
+  const gece  = (geceRes.data || []).length;
+  const namaz = (namazRes.data || []).length;
+  const etut  = (etutSinifRes.data || []).length;
+  document.getElementById('detayStats').innerHTML =
+      statCard(DASH_ICONS.gece,  'Gece Devamsız',  gece,  '', 'danger') +
+      statCard(DASH_ICONS.namaz, 'Namaz Devamsız', namaz, '', 'accent') +
+      statCard(DASH_ICONS.etut,  'Etüt Devamsız',  etut,  '', 'warning');
 }
 
 // ── TAB ──
@@ -734,44 +753,70 @@ async function loadYoklamaTumu() {
     exMap[gk + '|' + r.student_name] = { status: r.status, note: r.note || '' };
   });
 
-  const stBtn = (cur, st, label) =>
-    `<button class="status-btn${cur === st ? ' ' + st : ''}" data-st="${st}" onclick="markStatus(this,'${st}')">${label}</button>`;
-
-  const toplamOgr = groups.reduce((a, g) => a + g.students.length, 0);
-  const doluGrup = groups.filter(g => g.students.length).length;
+  const seg = (cur, st, label) =>
+    `<button class="yok-seg-btn${cur === st ? ' active' : ''}" data-st="${st}" onclick="markStatus(this,'${st}')" type="button">${label}</button>`;
 
   document.getElementById('yoklamaGruplar').innerHTML = groups.map(g => {
     if (!g.students.length) return '';
     return `
-      <div class="card" style="margin-bottom:14px" data-group-key="${g.key}">
-        <div style="font-weight:800;font-size:16px;margin:2px 4px 12px">${g.label} <span style="color:var(--muted);font-weight:600;font-size:13px">· ${g.students.length} öğrenci</span></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Öğrenci</th><th>Durum</th><th>Not</th></tr></thead>
-            <tbody>
-              ${g.students.map(name => {
-                const pre = exMap[g.key + '|' + name] || { status: 'var', note: '' };
-                return `<tr data-name="${escapeAttr(name)}" data-status="${pre.status}">
-                  <td>${name}</td>
-                  <td><div style="display:flex;gap:6px;flex-wrap:wrap">${stBtn(pre.status, 'var', 'Var')}${stBtn(pre.status, 'yok', 'Yok')}${stBtn(pre.status, 'izin', 'İzinli')}</div></td>
-                  <td><input class="input" style="width:160px;padding:6px 10px;font-size:13px" placeholder="Not..." data-note value="${escapeAttr(pre.note)}" /></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
+      <div class="card yok-group" data-group-key="${g.key}">
+        <div class="yok-group-head">
+          <span class="yok-group-title">${g.label}</span>
+          <span class="yok-group-tally" data-tally>${g.students.length} öğrenci</span>
+        </div>
+        <div class="yok-list">
+          ${g.students.map(name => {
+            const pre = exMap[g.key + '|' + name] || { status: 'var', note: '' };
+            const hasNote = !!pre.note;
+            return `<div class="yok-row st-${pre.status}" data-name="${escapeAttr(name)}" data-status="${pre.status}">
+              <span class="yok-name">${name}</span>
+              <span class="yok-seg" role="group" aria-label="Durum">${seg(pre.status, 'var', 'Var')}${seg(pre.status, 'yok', 'Yok')}${seg(pre.status, 'izin', 'İzinli')}</span>
+              <button class="yok-note-toggle${hasNote ? ' has-note' : ''}" title="Not" onclick="toggleYokNote(this)" type="button" aria-label="Not ekle">✎</button>
+              <input class="input yok-note" data-note placeholder="Not..." value="${escapeAttr(pre.note)}"${hasNote ? '' : ' hidden'} />
+            </div>`;
+          }).join('')}
         </div>
       </div>`;
   }).join('') || '<div class="empty"><div class="empty-icon">📋</div><p>Bu türde gösterilecek öğrenci yok. (Etüt için öğrencilere etüt sınıfı atanmalı.)</p></div>';
 
-  document.getElementById('yoklamaOzet').textContent = `${doluGrup} grup · ${toplamOgr} öğrenci — gelmeyenleri işaretle, sonra kaydet`;
+  updateYoklamaOzet();
   document.getElementById('yoklamaListesi').style.display = 'block';
 }
 
 function markStatus(btn, status) {
-  const tr = btn.closest('tr');
-  tr.querySelectorAll('.status-btn').forEach(b => b.classList.remove('var', 'yok', 'izin'));
-  tr.querySelector(`.status-btn[data-st="${status}"]`).classList.add(status);
-  tr.dataset.status = status;
+  const row = btn.closest('.yok-row');
+  row.querySelectorAll('.yok-seg-btn').forEach(b => b.classList.toggle('active', b.dataset.st === status));
+  row.dataset.status = status;
+  row.classList.remove('st-var', 'st-yok', 'st-izin');
+  row.classList.add('st-' + status);
+  updateYoklamaOzet();
+}
+
+// Not alanını aç/kapa (varsayılan gizli, kalabalık yapmasın diye).
+function toggleYokNote(btn) {
+  const input = btn.closest('.yok-row').querySelector('.yok-note');
+  if (!input) return;
+  input.hidden = !input.hidden;
+  if (!input.hidden) input.focus();
+}
+
+// Sticky özet barı + grup başlıklarındaki canlı "yok/izinli" sayacı.
+function updateYoklamaOzet() {
+  const groups = document.querySelectorAll('#yoklamaGruplar [data-group-key]');
+  let topYok = 0, topIzin = 0, topOgr = 0;
+  groups.forEach(gEl => {
+    const rows = gEl.querySelectorAll('.yok-row');
+    let gy = 0, gi = 0;
+    rows.forEach(r => { if (r.dataset.status === 'yok') gy++; else if (r.dataset.status === 'izin') gi++; });
+    topYok += gy; topIzin += gi; topOgr += rows.length;
+    const tally = gEl.querySelector('[data-tally]');
+    if (tally) tally.textContent = `${rows.length} öğrenci` + (gy || gi ? ` · ${gy} yok${gi ? ` · ${gi} izinli` : ''}` : '');
+  });
+  const ozet = document.getElementById('yoklamaOzet');
+  if (ozet) ozet.innerHTML = `${groups.length} grup · ${topOgr} öğrenci` +
+    (topYok || topIzin
+      ? ` · <span class="ozet-yok">${topYok} yok</span>${topIzin ? ` · <span class="ozet-izin">${topIzin} izinli</span>` : ''}`
+      : ' · tümü var');
 }
 
 function onYoklamaTurChange() {
@@ -791,7 +836,7 @@ async function saveYoklamaTumu() {
   document.querySelectorAll('#yoklamaGruplar [data-group-key]').forEach(groupEl => {
     const g = yoklamaTumuGroups.find(x => x.key === groupEl.dataset.groupKey);
     if (!g) return;
-    groupEl.querySelectorAll('tbody tr').forEach(tr => {
+    groupEl.querySelectorAll('.yok-row').forEach(tr => {
       records.push({
         room_id: g.room_id, etut_sinif: g.etut_sinif, type: tur, date: tarih, time: saat,
         student_name: tr.dataset.name, status: tr.dataset.status || 'var',
@@ -1083,9 +1128,34 @@ const TUR_LABELS = {
 // Etüt/kitap yoklaması SINIF bazlı alınır (odadan bağımsız); gece ise ODA bazlı.
 const ETUT_SINIFLAR = ['Sınıf 1', 'Sınıf 2'];
 const SINIF_TURLER = new Set(['etut1', 'etut2', 'etut3', 'kitap']);
+// Devamsızlık sayımı için: namaz türleri ve (eski 'ders' dahil) etüt türleri.
+const NAMAZ_TURLER = ['namaz_sabah', 'namaz_aksam', 'namaz_yatsi'];
+const ETUT_TURLER = new Set(['etut1', 'etut2', 'etut3', 'kitap', 'ders']);
+function isNamaz(t) { return typeof t === 'string' && t.startsWith('namaz'); }
 function yoklamaMode(tur) { return SINIF_TURLER.has(tur) ? 'sinif' : 'oda'; }
 function turLabel(type) {
   return TUR_LABELS[type] || type || '—';
+}
+
+// ── DASHBOARD ÖZET KARTLARI ──
+const DASH_ICONS = {
+  oda:   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V6l7-3 7 3v15M9 21v-5h6v5"/></svg>',
+  ogr:   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-1a4 4 0 0 0-8 0v1M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>',
+  gece:  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+  namaz: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16M5 21v-7c0-4 3-6 7-6s7 2 7 6v7M12 8V4m0 0c-.9.7-.9 1.8 0 2.5.9-.7.9-1.8 0-2.5z"/></svg>',
+  etut:  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v13M3 5.5h5A3 3 0 0 1 12 7a3 3 0 0 1 4-1.5h5V18h-5a3 3 0 0 0-4 1.5A3 3 0 0 0 8 18H3z"/></svg>',
+  toplam:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4H6l6 8-6 8h12"/></svg>',
+};
+function statCard(svg, label, value, ctx, sev) {
+  const hot = sev && Number(value) > 0;
+  return `<div class="stat-card${hot ? ' tint-' + sev : ''}">
+      <span class="stat-ic">${svg}</span>
+      <span class="stat-body">
+        <span class="stat-label">${label}</span>
+        <span class="stat-value${hot ? ' ' + sev : ''}">${value}</span>
+        ${ctx ? `<span class="stat-ctx">${ctx}</span>` : ''}
+      </span>
+    </div>`;
 }
 
 let toastTimer;

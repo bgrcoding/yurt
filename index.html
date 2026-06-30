@@ -69,13 +69,14 @@
         <thead>
           <tr>
             <th class="sortable" onclick="sortDashboard('id')">Oda <span id="sort_id"></span></th>
-            <th class="sortable" onclick="sortDashboard('_students')">Öğrenci <span id="sort__students"></span></th>
-            <th class="sortable" onclick="sortDashboard('_absGece')">Gece Devamsız <span id="sort__absGece"></span></th>
-            <th class="sortable" onclick="sortDashboard('_absDers')">Etüt Devamsız <span id="sort__absDers"></span></th>
+            <th class="sortable num" onclick="sortDashboard('_students')">Öğrenci <span id="sort__students"></span></th>
+            <th class="sortable num" onclick="sortDashboard('_absGece')">Gece <span id="sort__absGece"></span></th>
+            <th class="sortable num" onclick="sortDashboard('_absNamaz')">Namaz <span id="sort__absNamaz"></span></th>
+            <th class="sortable num" onclick="sortDashboard('_absDers')">Etüt <span id="sort__absDers"></span></th>
           </tr>
         </thead>
         <tbody id="dashboardBody">
-          <tr><td colspan="4"><div class="spinner"></div></td></tr>
+          <tr><td colspan="5"><div class="spinner"></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -187,7 +188,7 @@
           </div>
         </div>
         <button class="btn btn-primary" style="margin-top:16px" onclick="loadYoklamaTumu()">Yoklamayı Getir</button>
-        <p style="color:var(--muted);font-size:13px;margin:10px 0 0">Tüm gruplar tek ekranda gelir; herkes varsayılan <strong>Var</strong>'dır, sadece gelmeyenleri işaretleyip <strong>Hepsini Kaydet</strong>'e bas. Aynı tarih+tür için tekrar kaydedersen önceki yoklama güncellenir (kopya olmaz).</p>
+        <p style="color:var(--muted);font-size:13px;margin:10px 0 0">Herkes varsayılan <strong>Var</strong>. Sadece gelmeyenleri işaretle, <strong>Hepsini Kaydet</strong>'e bas.</p>
       </div>
 
       <div id="yoklamaListesi" style="display:none">

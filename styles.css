@@ -455,22 +455,59 @@ tr:hover td { background: var(--soft); }
 /* ── STATS ROW ── */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
 
 .stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px 20px;
+  padding: 15px 18px;
   box-shadow: var(--shadow-sm);
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
-.stat-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
-.stat-value { font-size: 28px; font-weight: 700; letter-spacing: -0.025em; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+
+.stat-ic {
+  flex: none;
+  width: 38px; height: 38px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 11px;
+  background: var(--soft);
+  color: var(--muted);
+}
+.stat-ic svg { display: block; }
+.stat-card.tint-danger  .stat-ic { background: var(--danger-soft);  color: var(--danger); }
+.stat-card.tint-warning .stat-ic { background: var(--warning-soft); color: var(--warning); }
+.stat-card.tint-accent  .stat-ic { background: var(--accent-soft);  color: var(--accent); }
+
+.stat-body { display: flex; flex-direction: column; min-width: 0; }
+.stat-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
 .stat-value.danger { color: var(--danger); }
 .stat-value.warning { color: var(--warning); }
 .stat-value.success { color: var(--success); }
+.stat-value.accent { color: var(--accent); }
+.stat-ctx { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ── SKELETON (yükleniyor) ── */
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.skeleton {
+  display: block;
+  background: linear-gradient(90deg, var(--line) 25%, rgba(0,0,0,0.045) 37%, var(--line) 63%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+  border-radius: 6px;
+}
+.skeleton-card .sk-ic { width: 38px; height: 38px; border-radius: 11px; flex: none; }
+.skeleton-card .sk-line.sm { width: 58px; height: 11px; margin-bottom: 8px; }
+.skeleton-card .sk-line.lg { width: 84px; height: 20px; }
+.skeleton-row .sk-line { height: 12px; width: 70%; }
 
 /* ── SEVERITY TAGS ── */
 .sev-bilgi    { background: var(--accent-soft);  color: var(--accent); }
@@ -537,12 +574,30 @@ th.sortable {
 th.sortable:hover { color: var(--ink); }
 th.sortable span { font-size: 10px; margin-left: 2px; }
 
-tr.row-danger td { background: #fff5f5; }
-tr.row-danger:hover td { background: #ffe4e6; }
-tr.row-warning td { background: #fffbeb; }
-tr.row-warning:hover td { background: #fef3c7; }
-
 tr.dashboard-row { cursor: pointer; }
+
+/* Sayı sütunları: sağa yaslı, hizalı rakam */
+th.num, td.num { text-align: right; }
+td.num { font-variant-numeric: tabular-nums; }
+td.num.zero { color: var(--muted); }
+td.num.danger  { color: var(--danger);  font-weight: 600; }
+td.num.warning { color: var(--warning); font-weight: 600; }
+td.num.accent  { color: var(--accent);  font-weight: 600; }
+
+/* Risk: tüm satırı boyamak yerine ilk hücrede renkli sol-şerit + nokta */
+td.oda-cell { padding-left: 18px; }
+tr.dashboard-row.row-danger  { --_risk: var(--danger); }
+tr.dashboard-row.row-warning { --_risk: var(--warning); }
+tr.dashboard-row.row-danger  td.oda-cell,
+tr.dashboard-row.row-warning td.oda-cell {
+  position: relative;
+  box-shadow: inset 3px 0 0 var(--_risk);
+}
+tr.dashboard-row.row-danger  td.oda-cell::before,
+tr.dashboard-row.row-warning td.oda-cell::before {
+  content: ""; position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  width: 6px; height: 6px; border-radius: 50%; background: var(--_risk);
+}
 
 /* ── PROGRAM TABLE ── */
 .program-title {
@@ -635,4 +690,56 @@ tr.dashboard-row { cursor: pointer; }
   .room-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
   .page-header { flex-direction: column; align-items: stretch; }
   .stats-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── YOKLAMA ALMA (temiz liste + segment) ── */
+.yok-group { margin-bottom: 14px; padding: 14px 16px; }
+.yok-group-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 6px;
+}
+.yok-group-title { font-weight: 700; font-size: 15px; }
+.yok-group-tally { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+
+.yok-list { display: flex; flex-direction: column; }
+.yok-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
+  padding: 8px; border-radius: 10px;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.14s;
+}
+.yok-row:last-child { border-bottom: none; }
+.yok-name {
+  flex: 1; min-width: 0; font-size: 15px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.yok-row.st-yok  { background: var(--danger-soft); }
+.yok-row.st-izin { background: var(--warning-soft); }
+
+.yok-seg { flex: none; display: inline-flex; padding: 2px; background: var(--soft); border-radius: 9px; }
+.yok-seg-btn {
+  border: none; background: transparent; color: var(--muted);
+  font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 7px;
+  transition: background 0.14s, color 0.14s;
+}
+.yok-seg-btn.active { background: var(--panel); box-shadow: var(--shadow-sm); }
+.yok-seg-btn[data-st="var"].active  { color: var(--ink); }
+.yok-seg-btn[data-st="yok"].active  { color: var(--danger); }
+.yok-seg-btn[data-st="izin"].active { color: var(--warning); }
+
+.yok-note-toggle {
+  flex: none; width: 30px; height: 30px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  font-size: 14px; line-height: 1;
+}
+.yok-note-toggle.has-note { color: var(--accent); border-color: var(--accent); }
+.yok-note { flex-basis: 100%; margin-top: 4px; padding: 7px 10px; font-size: 13px; }
+
+.ozet-yok { color: var(--danger); }
+.ozet-izin { color: var(--warning); }
+
+@media (max-width: 600px) {
+  .yok-seg { flex: 1 1 100%; order: 3; }
+  .yok-seg-btn { flex: 1; text-align: center; }
+  .yok-note-toggle { order: 2; }
 }
