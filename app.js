@@ -2,6 +2,13 @@
 const { createClient } = supabase;
 const sb = createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
 
+// Anlık ziyaretçi sayacı: ana sayfadaki (camdata) toplam sayıma dahil olmak için
+// aynı "online_users" presence kanalına katıl. Yurt sayfasında sayı gösterilmiyor, sadece sayılıyor.
+(function trackPresence() {
+  const ch = sb.channel("online_users", { config: { presence: { key: crypto.randomUUID() } } });
+  ch.subscribe(async (status) => { if (status === "SUBSCRIBED") await ch.track({ joined_at: Date.now() }); });
+})();
+
 // ── STATE ──
 let currentUser = null;
 let isAdmin = false;
