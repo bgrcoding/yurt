@@ -7,10 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;700&display=swap" rel="stylesheet" />
-  <script>
-    // Otomatik önbellek kırıcı: her yüklemede güncel CSS'i çeker.
-    document.write('<link rel="stylesheet" href="styles.css?v=' + Date.now() + '" />');
-  </script>
+  <!-- CSS'i statik <link> ile yükle: render'ı bloklar → stilsiz parlama (FOUC) olmaz.
+       Tazelik için Cloudflare/tarayıcı etag revalidasyonu yeterli (deploy sonrası dosya
+       değişince otomatik yeniden iner). Date.now() cache-bust'ı KALDIRILDI çünkü her
+       yüklemede CSS'i sıfırdan indirtip parlamaya yol açıyordu. -->
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
@@ -21,6 +22,7 @@
   <button class="nav-btn" id="navDashboard" onclick="showPage('dashboard')">Dashboard</button>
   <button class="nav-btn" id="navOdalar" onclick="showPage('odalar')">Odalar</button>
   <button class="nav-btn admin-only" id="navYoklama" onclick="showPage('yoklama')" style="display:none">Yoklama</button>
+  <button class="nav-btn admin-only" id="navOdapuan" onclick="showPage('odapuan')" style="display:none">Oda Düzeni</button>
   <button class="nav-btn" id="navArama" onclick="showPage('arama')">Öğrenci Ara</button>
   <button class="nav-btn admin-only" id="navYonetim" onclick="showPage('yonetim')" style="display:none">Yönetim</button>
   <button class="nav-auth-btn" id="navLoginBtn" onclick="openLoginModal()">Yönetici Girişi</button>
@@ -57,28 +59,42 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">Dashboard</h1>
-        <p class="page-subtitle" id="dashboardSubtitle">Tüm odaların genel durumu</p>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">↺ Yenile</button>
     </div>
 
-    <div class="stats-row" id="dashboardStats" style="margin-bottom:24px"></div>
+    <div class="detail-tabs">
+      <button class="tab-btn active" id="dashTabGunBtn" onclick="switchDashTab('gun')">Günlük</button>
+      <button class="tab-btn" id="dashTabToplamBtn" onclick="switchDashTab('toplam')">Toplam</button>
+      <button class="tab-btn" id="dashTabGenelBtn" onclick="switchDashTab('genel')">Genel</button>
+    </div>
 
-    <div class="card table-wrap">
-      <table id="dashboardTable">
-        <thead>
-          <tr>
-            <th class="sortable" onclick="sortDashboard('id')">Oda <span id="sort_id"></span></th>
-            <th class="sortable num" onclick="sortDashboard('_students')">Öğrenci <span id="sort__students"></span></th>
-            <th class="sortable num" onclick="sortDashboard('_absGece')">Gece <span id="sort__absGece"></span></th>
-            <th class="sortable num" onclick="sortDashboard('_absNamaz')">Namaz <span id="sort__absNamaz"></span></th>
-            <th class="sortable num" onclick="sortDashboard('_absDers')">Etüt <span id="sort__absDers"></span></th>
-          </tr>
-        </thead>
-        <tbody id="dashboardBody">
-          <tr><td colspan="5"><div class="spinner"></div></td></tr>
-        </tbody>
-      </table>
+    <!-- View: Günlük -->
+    <div class="view active" id="dashViewGun">
+      <div class="card" style="margin-bottom:20px">
+        <div class="dash-date-bar">
+          <button class="btn btn-sm" onclick="dashShiftDay(-1)" aria-label="Önceki gün" type="button">‹</button>
+          <input class="input" type="date" id="dashTarih" onchange="renderDashGun()" style="max-width:190px;margin:0" />
+          <button class="btn btn-sm" onclick="dashShiftDay(1)" aria-label="Sonraki gün" type="button">›</button>
+          <button class="btn btn-sm btn-ghost" onclick="dashBugun()" type="button">Bugün</button>
+          <select class="input" id="dashTurFilt" onchange="renderDashGun()" style="max-width:200px;margin:0">
+            <option value="">Tüm yoklamalar</option>
+          </select>
+          <span id="dashGunOzet" class="dash-ozet"></span>
+        </div>
+      </div>
+      <div id="dashGunSonuc"><div class="spinner"></div></div>
+    </div>
+
+    <!-- View: Toplam -->
+    <div class="view" id="dashViewToplam">
+      <p class="sub-note" style="color:var(--muted);font-size:13px;margin:0 0 14px">Tüm günlerin toplamı — en çok devamsızlık/geç yapan öğrenciler üstte.</p>
+      <div id="dashToplamSonuc"></div>
+    </div>
+
+    <!-- View: Genel -->
+    <div class="view" id="dashViewGenel">
+      <div id="dashGenelSonuc"><div class="spinner"></div></div>
     </div>
   </div>
 
@@ -229,6 +245,51 @@
         </label>
       </div>
       <div id="gecmisSonuc"></div>
+    </div>
+  </div>
+
+  <!-- SAYFA: ODA DÜZENİ PUANLAMA (admin only) -->
+  <div class="page" id="pageOdapuan">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Oda Düzeni</h1>
+        <p class="page-subtitle">Odaların düzenine 1–5 arası puan ver, sıralamayı gör</p>
+      </div>
+    </div>
+
+    <div class="detail-tabs">
+      <button class="tab-btn active" id="puanTabVerBtn" onclick="switchPuanTab('ver')">Puanla</button>
+      <button class="tab-btn" id="puanTabSiralamaBtn" onclick="switchPuanTab('siralama')">Sıralama</button>
+    </div>
+
+    <!-- View: Puanla -->
+    <div class="view active" id="puanViewVer">
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px">
+          <div class="field" style="margin:0">
+            <label>Tarih</label>
+            <input class="input" type="date" id="puanTarih" />
+          </div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="loadOdaPuanTumu()">Odaları Getir</button>
+        <p style="color:var(--muted);font-size:13px;margin:10px 0 0">Her odaya <strong>1–5</strong> arası puan ver (5 = en düzenli). İstersen not ekle, sonra <strong>Hepsini Kaydet</strong>'e bas.</p>
+      </div>
+
+      <div id="puanListesi" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;position:sticky;top:0;background:var(--soft);padding:8px 0;z-index:5">
+          <div id="puanOzet" style="color:var(--muted);font-size:14px;font-weight:600"></div>
+          <button class="btn btn-primary" onclick="saveOdaPuanTumu()">Hepsini Kaydet</button>
+        </div>
+        <div id="puanOdalar"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+          <button class="btn btn-primary" onclick="saveOdaPuanTumu()">Hepsini Kaydet</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- View: Sıralama -->
+    <div class="view" id="puanViewSiralama">
+      <div id="puanSiralamaSonuc"></div>
     </div>
   </div>
 
@@ -411,6 +472,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
-<script>document.write('<script src="app.js?v=' + Date.now() + '"><\/script>');</script>
+<script src="app.js"></script>
 </body>
 </html>

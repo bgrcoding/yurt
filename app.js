@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setTodayDefaults() {
   const today = new Date().toISOString().split('T')[0];
   const now = new Date().toTimeString().slice(0,5);
-  ['yoklamaTarih'].forEach(id => {
+  ['yoklamaTarih', 'puanTarih'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = today;
   });
@@ -120,6 +120,7 @@ function showPage(name) {
   if (name === 'dashboard') loadDashboard();
   if (name === 'odalar') loadRooms();
   if (name === 'yoklama') loadYoklamaOdalar();
+  if (name === 'odapuan') loadOdaPuanBaslangic();
   if (name === 'arama') document.getElementById('aramaResults').innerHTML = '';
   if (name === 'yonetim') {}
 }
@@ -127,110 +128,257 @@ function showPage(name) {
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // ── DASHBOARD ──
-let dashboardData = [];
-let dashboardSort = { col: '_absGece', asc: false };
+// Hoca odaklı: "bugün kim neye gelmedi / geç kaldı" (Günlük) + tüm zamanlar toplamı (Toplam).
+let dashRollcalls = [];   // tüm yoklama kayıtları (client tarafında tarihe göre filtrelenir)
+let dashStuRoom = {};     // öğrenci adı → oda no eşlemesi
+let dashRooms = [];       // oda listesi (Genel sekmesi oda özeti için)
+let dashTab = 'gun';
 
 async function loadDashboard() {
-  // Yükleniyor: skeleton kartlar + tablo satırları (çıplak spinner yerine).
-  document.getElementById('dashboardStats').innerHTML = Array.from({ length: 6 }, () =>
-    `<div class="stat-card skeleton-card"><span class="skeleton sk-ic"></span><span class="stat-body"><span class="skeleton sk-line sm"></span><span class="skeleton sk-line lg"></span></span></div>`).join('');
-  document.getElementById('dashboardBody').innerHTML = Array.from({ length: 6 }, () =>
-    `<tr class="skeleton-row">${'<td><span class="skeleton sk-line"></span></td>'.repeat(5)}</tr>`).join('');
+  const gunWrap = document.getElementById('dashGunSonuc');
+  if (gunWrap) gunWrap.innerHTML = '<div class="spinner"></div>';
+  const t = document.getElementById('dashTarih');
+  if (t && !t.value) t.value = new Date().toISOString().split('T')[0];
 
   const [roomsRes, studentsRes, rollRes] = await Promise.all([
-    sb.from('rooms').select('id, name, floor').order('id'),
+    sb.from('rooms').select('id, name').order('id'),
     sb.from('room_students').select('room_id, student_name'),
-    sb.from('rollcalls').select('room_id, type, status, student_name'),
+    sb.from('rollcalls').select('date, room_id, type, status, student_name, note'),
   ]);
+  dashRooms = roomsRes.data || [];
+  dashStuRoom = {};
+  (studentsRes.data || []).forEach(s => { dashStuRoom[s.student_name] = s.room_id; });
+  dashRollcalls = rollRes.data || [];
 
-  const rooms = roomsRes.data || [];
-  const students = studentsRes.data || [];
-  const rollcalls = rollRes.data || [];
-
-  // Etüt/kitap yoklaması oda yerine sınıf bazlı kaydedilir (room_id boş);
-  // oda devamsızlığını öğrenci→oda eşlemesiyle hesapla.
-  const stuRoom = {};
-  students.forEach(s => { stuRoom[s.student_name] = s.room_id; });
-
-  rooms.forEach(r => {
-    r._students   = students.filter(s => s.room_id === r.id).length;
-    r._absGece    = rollcalls.filter(x => x.room_id === r.id && x.type === 'gece' && x.status === 'yok').length;
-    // Namaz (oda bazlı) artık etütten ayrı sayılır.
-    r._absNamaz   = rollcalls.filter(x => x.room_id === r.id && isNamaz(x.type) && x.status === 'yok').length;
-    // Etüt = yalnızca sınıf bazlı etüt/kitap türleri (namaz/ekstra hariç).
-    r._absDers    = rollcalls.filter(x => ETUT_TURLER.has(x.type) && x.status === 'yok'
-                      && (x.room_id === r.id || (!x.room_id && stuRoom[x.student_name] === r.id))).length;
-  });
-
-  dashboardData = rooms;
-
-  // Özet istatistikler
-  const totalStudents = rooms.reduce((a, r) => a + r._students, 0);
-  const totalGece  = rooms.reduce((a, r) => a + (r._absGece  || 0), 0);
-  const totalNamaz = rooms.reduce((a, r) => a + (r._absNamaz || 0), 0);
-  const totalEtut  = rooms.reduce((a, r) => a + (r._absDers  || 0), 0);
-  const totalDevamsiz = totalGece + totalNamaz + totalEtut;
-  const doluOda = rooms.filter(r => r._students > 0).length;
-  const ortOda  = rooms.length ? Math.round(totalStudents / rooms.length) : 0;
-  const odaSayisi = key => rooms.filter(r => (r[key] || 0) > 0).length;
-  document.getElementById('dashboardStats').innerHTML =
-      statCard(DASH_ICONS.oda,    'Toplam Oda',     rooms.length, `${doluOda} dolu`,                 '') +
-      statCard(DASH_ICONS.ogr,    'Toplam Öğrenci', totalStudents, `ort. ${ortOda}/oda`,            '') +
-      statCard(DASH_ICONS.gece,   'Gece Devamsız',  totalGece,    `${odaSayisi('_absGece')} odada`,  'danger') +
-      statCard(DASH_ICONS.namaz,  'Namaz Devamsız', totalNamaz,   `${odaSayisi('_absNamaz')} odada`, 'accent') +
-      statCard(DASH_ICONS.etut,   'Etüt Devamsız',  totalEtut,    `${odaSayisi('_absDers')} odada`,  'warning') +
-      statCard(DASH_ICONS.toplam, 'Toplam Devamsız', totalDevamsiz, 'gece + namaz + etüt',           'danger');
-  document.getElementById('dashboardSubtitle').textContent = `${rooms.length} oda · ${totalStudents} öğrenci`;
-
-  renderDashboardTable();
+  renderDashActive();
 }
 
-function renderDashboardTable() {
-  const { col, asc } = dashboardSort;
-  const sorted = [...dashboardData].sort((a, b) => {
-    const av = a[col] ?? '', bv = b[col] ?? '';
-    if (av < bv) return asc ? -1 : 1;
-    if (av > bv) return asc ? 1 : -1;
-    return 0;
+// Aktif sekmeyi yeniden çiz
+function renderDashActive() {
+  if (dashTab === 'gun') renderDashGun();
+  else if (dashTab === 'toplam') renderDashToplam();
+  else renderDashGenel();
+}
+
+function switchDashTab(tab) {
+  dashTab = tab;
+  [['gun', 'Gun'], ['toplam', 'Toplam'], ['genel', 'Genel']].forEach(([key, cap]) => {
+    const on = key === tab;
+    document.getElementById('dashTab' + cap + 'Btn').classList.toggle('active', on);
+    document.getElementById('dashView' + cap).classList.toggle('active', on);
   });
+  renderDashActive();
+}
 
-  // Sort indicator
-  document.querySelectorAll('th.sortable span').forEach(s => s.textContent = '');
-  const indicator = document.getElementById('sort_' + col);
-  if (indicator) indicator.textContent = asc ? '↑' : '↓';
+function dashShiftDay(delta) {
+  const t = document.getElementById('dashTarih');
+  const d = new Date(t.value || new Date());
+  d.setDate(d.getDate() + delta);
+  t.value = d.toISOString().split('T')[0];
+  renderDashGun();
+}
+function dashBugun() {
+  document.getElementById('dashTarih').value = new Date().toISOString().split('T')[0];
+  renderDashGun();
+}
 
-  const tbody = document.getElementById('dashboardBody');
-  if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">🏠</div><p>Henüz oda yok.</p></div></td></tr>';
+// Kaydın hangi odaya ait olduğu: gece/namaz oda bazlı (room_id dolu),
+// etüt/kitap sınıf bazlı (room_id boş) → öğrenci→oda eşlemesiyle bul.
+function dashOdaOf(r) {
+  return r.room_id || dashStuRoom[r.student_name] || null;
+}
+
+// Türleri mantıklı sırada göster (gece → namazlar → etütler → diğer)
+const DASH_TUR_SIRA = ['gece', 'namaz_sabah', 'namaz_aksam', 'namaz_yatsi', 'etut1', 'etut2', 'etut3', 'kitap', 'ders'];
+function dashTurSirala(turler) {
+  return [...turler].sort((a, b) => {
+    const ia = DASH_TUR_SIRA.indexOf(a), ib = DASH_TUR_SIRA.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, 'tr');
+  });
+}
+
+function renderDashGun() {
+  const tarih = document.getElementById('dashTarih').value;
+  const wrap = document.getElementById('dashGunSonuc');
+  const ozet = document.getElementById('dashGunOzet');
+  const gun = dashRollcalls.filter(r => r.date === tarih);
+  const turler = dashTurSirala([...new Set(gun.map(r => r.type))]);
+  const yokN = gun.filter(r => r.status === 'yok').length;
+  const gecN = gun.filter(r => r.status === 'gec').length;
+
+  if (ozet) ozet.innerHTML = turler.length
+    ? `${turler.length} yoklama · <span class="ozet-yok">${yokN} yok</span>${gecN ? ` · <span class="ozet-gec">${gecN} geç</span>` : ''}`
+    : 'bu gün yoklama alınmamış';
+
+  // Tür filtresini o günün türleriyle doldur (seçim hâlâ geçerliyse koru, değilse Tümü'ne dön)
+  const turSelect = document.getElementById('dashTurFilt');
+  if (turSelect) {
+    const prev = turSelect.value;
+    turSelect.innerHTML = '<option value="">Tüm yoklamalar</option>'
+      + turler.map(t => `<option value="${t}">${turLabel(t)}</option>`).join('');
+    turSelect.value = turler.includes(prev) ? prev : '';
+  }
+  const filt = turSelect ? turSelect.value : '';
+
+  if (!turler.length) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>${fmtDate(tarih)} için yoklama kaydı yok.</p></div>`;
     return;
   }
 
-  // Devamsızlık hücresi: 0 ise muted "—", >0 ise ilgili renkte sayı.
-  const cell = (n, sev) => (n > 0
-    ? `<td class="num ${sev}">${n}</td>`
-    : `<td class="num zero">—</td>`);
+  // Filtre seçiliyse yalnızca o türü göster; değilse hepsini.
+  const gosterilecek = filt ? turler.filter(t => t === filt) : turler;
 
-  tbody.innerHTML = sorted.map(r => {
-    const toplamDevamsiz = (r._absGece || 0) + (r._absNamaz || 0) + (r._absDers || 0);
-    const rowClass = toplamDevamsiz >= 5 ? 'row-danger' : toplamDevamsiz >= 3 ? 'row-warning' : '';
-    return `<tr class="dashboard-row ${rowClass}" onclick="goToRoom('${r.id}')">
-      <td class="oda-cell"><strong>${r.id}</strong>${r.name ? `<span style="color:var(--muted);font-size:12px;margin-left:6px">${r.name}</span>` : ''}</td>
-      <td class="num">${r._students}</td>
-      ${cell(r._absGece || 0, 'danger')}
-      ${cell(r._absNamaz || 0, 'accent')}
-      ${cell(r._absDers || 0, 'warning')}
-    </tr>`;
+  // Her tür için o türe gelmeyen (yok) / geç kalan öğrencileri listele; gelenleri gösterme.
+  wrap.innerHTML = gosterilecek.map(tur => {
+    const liste = gun.filter(r => r.type === tur && (r.status === 'yok' || r.status === 'gec'))
+      .sort((a, b) => (a.status === b.status ? 0 : a.status === 'yok' ? -1 : 1)
+        || a.student_name.localeCompare(b.student_name, 'tr'));
+    const yokC = liste.filter(r => r.status === 'yok').length;
+    const gecC = liste.filter(r => r.status === 'gec').length;
+    const rows = liste.map(r => {
+      const oda = dashOdaOf(r);
+      const badge = r.status === 'yok'
+        ? '<span class="badge badge-danger">Yok</span>'
+        : '<span class="badge badge-accent">Geç</span>';
+      return `<tr>
+        <td>${r.student_name}</td>
+        <td>${oda ? 'Oda ' + oda : '—'}</td>
+        <td>${badge}</td>
+        <td><span class="note-chip">${r.note || '—'}</span></td>
+      </tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="dash-tur-head">
+        <strong>${turLabel(tur)}</strong>
+        <span class="dash-tur-tags">
+          ${yokC ? `<span class="badge badge-danger">${yokC} yok</span>` : ''}
+          ${gecC ? `<span class="badge badge-accent">${gecC} geç</span>` : ''}
+          ${(!yokC && !gecC) ? '<span class="badge badge-success">Tam katılım</span>' : ''}
+        </span>
+      </div>
+      ${liste.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Öğrenci</th><th>Oda</th><th>Durum</th><th>Not</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : ''}
+    </div>`;
   }).join('');
 }
 
-function sortDashboard(col) {
-  if (dashboardSort.col === col) {
-    dashboardSort.asc = !dashboardSort.asc;
-  } else {
-    dashboardSort.col = col;
-    dashboardSort.asc = col === 'id';
+function renderDashToplam() {
+  const wrap = document.getElementById('dashToplamSonuc');
+  const agg = {};
+  dashRollcalls.forEach(r => {
+    if (r.status !== 'yok' && r.status !== 'gec') return;
+    const a = agg[r.student_name] || (agg[r.student_name] = { name: r.student_name, yok: 0, gec: 0 });
+    if (r.status === 'yok') a.yok++; else a.gec++;
+  });
+  const list = Object.values(agg)
+    .sort((x, y) => y.yok - x.yok || y.gec - x.gec || x.name.localeCompare(y.name, 'tr'));
+
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div><p>Hiç devamsızlık / geç kaydı yok.</p></div>`;
+    return;
   }
-  renderDashboardTable();
+  wrap.innerHTML = `<div class="card table-wrap"><table>
+    <thead><tr><th>Öğrenci</th><th>Oda</th><th class="num">Toplam Yok</th><th class="num">Toplam Geç</th></tr></thead>
+    <tbody>${list.map(a => {
+      const oda = dashStuRoom[a.name];
+      return `<tr>
+        <td><strong>${a.name}</strong></td>
+        <td>${oda ? 'Oda ' + oda : '—'}</td>
+        <td class="num ${a.yok ? 'danger' : 'zero'}">${a.yok || '—'}</td>
+        <td class="num ${a.gec ? 'accent' : 'zero'}">${a.gec || '—'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+// 'YYYY-MM-DD' → 'DD.MM' (grafik ekseni için kısa etiket)
+function dashKisaTarih(d) {
+  const [, ay, gun] = String(d).split('-');
+  return `${gun}.${ay}`;
+}
+
+// Günlük yok/geç için gruplu çubuk grafik (bağımlılıksız, saf SVG)
+function dashBarChart(data) {
+  if (!data.length) return '<div class="empty"><div class="empty-icon">📊</div><p>Grafik için veri yok.</p></div>';
+  const W = 720, H = 260, padL = 30, padR = 12, padT = 14, padB = 40;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const yMax = Math.max(1, ...data.map(d => Math.max(d.yok, d.gec)));
+  const n = data.length;
+  const groupW = plotW / n;
+  const barW = Math.max(4, Math.min(16, groupW / 2.6));
+  const gap = Math.min(3, barW / 4);
+  const yOf = v => padT + plotH - (v / yMax) * plotH;
+
+  const ticks = 4;
+  let grid = '';
+  for (let i = 0; i <= ticks; i++) {
+    const val = Math.round(yMax * i / ticks);
+    const y = yOf(val);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`
+          + `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="var(--muted)">${val}</text>`;
+  }
+  const bars = data.map((d, i) => {
+    const cx = padL + groupW * i + groupW / 2;
+    const yY = yOf(d.yok), yG = yOf(d.gec);
+    const base = padT + plotH;
+    const showLbl = n <= 16 || i % Math.ceil(n / 16) === 0;
+    return `${d.yok ? `<rect x="${cx - barW - gap / 2}" y="${yY}" width="${barW}" height="${base - yY}" rx="2" fill="var(--danger)"><title>${d.label}: ${d.yok} yok</title></rect>` : ''}`
+         + `${d.gec ? `<rect x="${cx + gap / 2}" y="${yG}" width="${barW}" height="${base - yG}" rx="2" fill="var(--accent)"><title>${d.label}: ${d.gec} geç</title></rect>` : ''}`
+         + `${showLbl ? `<text x="${cx}" y="${H - padB + 15}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.label}</text>` : ''}`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Günlere göre devamsızlık">${grid}${bars}</svg>`;
+}
+
+function renderDashGenel() {
+  const wrap = document.getElementById('dashGenelSonuc');
+
+  // 1) Günlük toplamlar → grafik (son 21 gün)
+  const byDate = {};
+  dashRollcalls.forEach(r => {
+    if (r.status !== 'yok' && r.status !== 'gec') return;
+    const d = byDate[r.date] || (byDate[r.date] = { yok: 0, gec: 0 });
+    if (r.status === 'yok') d.yok++; else d.gec++;
+  });
+  const dates = Object.keys(byDate).sort();
+  const chartData = dates.slice(-21).map(d => ({ label: dashKisaTarih(d), yok: byDate[d].yok, gec: byDate[d].gec }));
+
+  // 2) Oda bazında toplam
+  const odaAgg = {};
+  dashRooms.forEach(r => { odaAgg[r.id] = { id: r.id, name: r.name, students: 0, yok: 0, gec: 0 }; });
+  Object.values(dashStuRoom).forEach(rid => { if (odaAgg[rid]) odaAgg[rid].students++; });
+  dashRollcalls.forEach(r => {
+    if (r.status !== 'yok' && r.status !== 'gec') return;
+    const a = odaAgg[dashOdaOf(r)];
+    if (!a) return;
+    if (r.status === 'yok') a.yok++; else a.gec++;
+  });
+  const odaList = Object.values(odaAgg)
+    .filter(a => a.students > 0)
+    .sort((x, y) => (y.yok + y.gec) - (x.yok + x.gec)
+      || String(x.id).localeCompare(String(y.id), 'tr', { numeric: true }));
+
+  const legend = `<div class="dash-legend">
+    <span class="dash-legend-item"><span class="dash-legend-dot" style="background:var(--danger)"></span>Yok</span>
+    <span class="dash-legend-item"><span class="dash-legend-dot" style="background:var(--accent)"></span>Geç</span>
+  </div>`;
+
+  wrap.innerHTML = `
+    <div class="card" style="margin-bottom:20px">
+      <div class="dash-tur-head"><strong>Günlere göre devamsızlık</strong>${legend}</div>
+      ${dashBarChart(chartData)}
+    </div>
+    <div class="card table-wrap">
+      <div style="padding:0 4px 12px"><strong>Oda bazında özet</strong></div>
+      <table>
+        <thead><tr><th>Oda</th><th class="num">Öğrenci</th><th class="num">Toplam Yok</th><th class="num">Toplam Geç</th></tr></thead>
+        <tbody>${odaList.map(a => `<tr class="dashboard-row" onclick="goToRoom('${a.id}')">
+          <td class="oda-cell"><strong>${a.id}</strong>${a.name ? `<span style="color:var(--muted);font-size:12px;margin-left:6px">${a.name}</span>` : ''}</td>
+          <td class="num">${a.students}</td>
+          <td class="num ${a.yok ? 'danger' : 'zero'}">${a.yok || '—'}</td>
+          <td class="num ${a.gec ? 'accent' : 'zero'}">${a.gec || '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
 }
 
 // ── PROGRAM (Haftalık çizelge — Excel mantığı) ──
@@ -878,6 +1026,157 @@ async function saveYoklamaTumu() {
   toast(`Yoklama kaydedildi ✓ (${records.length} öğrenci)`);
 }
 
+// ── ODA DÜZENİ PUANLAMA ──
+// Oda başına, tarihli, 1–5 arası düzen puanı. Aynı oda+tarih tek kayıt (upsert).
+let puanOdalarListe = [];
+
+function switchPuanTab(tab) {
+  const ver = tab === 'ver';
+  document.getElementById('puanTabVerBtn').classList.toggle('active', ver);
+  document.getElementById('puanTabSiralamaBtn').classList.toggle('active', !ver);
+  document.getElementById('puanViewVer').classList.toggle('active', ver);
+  document.getElementById('puanViewSiralama').classList.toggle('active', !ver);
+  if (!ver) loadOdaPuanSiralama();
+}
+
+function loadOdaPuanBaslangic() {
+  // Sayfaya her gelişte "Puanla" sekmesini aç, listeyi gizle (eski liste kalmasın).
+  switchPuanTab('ver');
+  document.getElementById('puanListesi').style.display = 'none';
+}
+
+async function loadOdaPuanTumu() {
+  const tarih = document.getElementById('puanTarih').value;
+  if (!tarih) { toast('Tarih seçin'); return; }
+
+  const [roomsRes, scoresRes] = await Promise.all([
+    sb.from('rooms').select('id, name').order('id'),
+    sb.from('room_scores').select('room_id, score, note').eq('date', tarih),
+  ]);
+  puanOdalarListe = roomsRes.data || [];
+  if (!puanOdalarListe.length) {
+    document.getElementById('puanOdalar').innerHTML = '<div class="empty"><div class="empty-icon">🚪</div><p>Henüz oda yok.</p></div>';
+    document.getElementById('puanListesi').style.display = 'block';
+    updateOdaPuanOzet();
+    return;
+  }
+
+  // O tarihteki mevcut puanları ön-doldur (varsa)
+  const exMap = {};
+  (scoresRes.data || []).forEach(r => { exMap[r.room_id] = { score: r.score, note: r.note || '' }; });
+
+  const seg = (cur, n) =>
+    `<button class="puan-seg-btn${cur === n ? ' active' : ''}" data-p="${n}" onclick="markPuan(this,${n})" type="button">${n}</button>`;
+
+  document.getElementById('puanOdalar').innerHTML = puanOdalarListe.map(r => {
+    const pre = exMap[r.id] || { score: 0, note: '' };
+    const hasNote = !!pre.note;
+    const label = 'Oda ' + r.id + (r.name ? ' · ' + r.name : '');
+    return `<div class="card puan-row" data-room="${r.id}" data-score="${pre.score || 0}" style="margin-bottom:10px">
+      <div class="puan-row-head">
+        <span class="puan-oda">${escapeAttr(label)}</span>
+        <span class="puan-seg" role="group" aria-label="Puan">${[1,2,3,4,5].map(n => seg(pre.score, n)).join('')}</span>
+        <button class="yok-note-toggle${hasNote ? ' has-note' : ''}" title="Not" onclick="togglePuanNote(this)" type="button" aria-label="Not ekle">✎</button>
+      </div>
+      <input class="input puan-note" data-note placeholder="Not..." value="${escapeAttr(pre.note)}"${hasNote ? '' : ' hidden'} />
+    </div>`;
+  }).join('');
+
+  updateOdaPuanOzet();
+  document.getElementById('puanListesi').style.display = 'block';
+}
+
+function markPuan(btn, n) {
+  const row = btn.closest('.puan-row');
+  const cur = Number(row.dataset.score);
+  const yeni = cur === n ? 0 : n; // aynı puana tekrar tıklayınca seçim kalkar
+  row.dataset.score = yeni;
+  row.querySelectorAll('.puan-seg-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.p) === yeni));
+  updateOdaPuanOzet();
+}
+
+function togglePuanNote(btn) {
+  const input = btn.closest('.puan-row').querySelector('.puan-note');
+  if (!input) return;
+  input.hidden = !input.hidden;
+  if (!input.hidden) input.focus();
+}
+
+function updateOdaPuanOzet() {
+  const rows = document.querySelectorAll('#puanOdalar .puan-row');
+  let puanli = 0, toplam = 0;
+  rows.forEach(r => { const s = Number(r.dataset.score); if (s) { puanli++; toplam += s; } });
+  const ozet = document.getElementById('puanOzet');
+  if (ozet) ozet.textContent = `${rows.length} oda · ${puanli} puanlandı`
+    + (puanli ? ` · ort. ${(toplam / puanli).toFixed(1)}` : '');
+}
+
+async function saveOdaPuanTumu() {
+  const tarih = document.getElementById('puanTarih').value;
+  if (!tarih) { toast('Tarih seçin'); return; }
+  const by = currentUser?.email || 'misafir';
+
+  const records = [];
+  document.querySelectorAll('#puanOdalar .puan-row').forEach(row => {
+    const score = Number(row.dataset.score);
+    if (!score) return; // puan verilmeyen oda kaydedilmez
+    records.push({
+      room_id: row.dataset.room, date: tarih, score,
+      note: row.querySelector('[data-note]')?.value || '', created_by: by,
+    });
+  });
+
+  // O tarihe ait eski puanları sil → tekrar kaydetmek GÜNCELLEME olur (puanı kaldırılan oda da silinir)
+  const del = await sb.from('room_scores').delete().eq('date', tarih);
+  if (del.error) { toast('Hata: ' + del.error.message); return; }
+  if (records.length) {
+    const ins = await sb.from('room_scores').insert(records);
+    if (ins.error) { toast('Hata: ' + ins.error.message); return; }
+  }
+  toast(`Oda puanları kaydedildi ✓ (${records.length} oda)`);
+}
+
+async function loadOdaPuanSiralama() {
+  const wrap = document.getElementById('puanSiralamaSonuc');
+  wrap.innerHTML = '<div class="spinner"></div>';
+  const { data, error } = await sb.from('room_scores').select('room_id, score, date');
+  if (error) { wrap.innerHTML = `<p style="color:var(--danger)">Hata: ${error.message}</p>`; return; }
+  if (!data?.length) {
+    wrap.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><p>Henüz puanlama yok. "Puanla" sekmesinden başla.</p></div>';
+    return;
+  }
+
+  // Oda bazında ortalama + puanlama sayısı + son tarih
+  const agg = {};
+  data.forEach(r => {
+    const a = agg[r.room_id] || (agg[r.room_id] = { room_id: r.room_id, toplam: 0, adet: 0, sonTarih: '' });
+    a.toplam += r.score; a.adet++;
+    if (r.date > a.sonTarih) a.sonTarih = r.date;
+  });
+  const siralama = Object.values(agg)
+    .map(a => ({ ...a, ort: a.toplam / a.adet }))
+    .sort((x, y) => y.ort - x.ort || String(x.room_id).localeCompare(String(y.room_id), 'tr', { numeric: true }));
+
+  const madalya = i => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`);
+  wrap.innerHTML = `
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Sıra</th><th>Oda</th><th>Ortalama</th><th>Puanlama</th><th>Son</th></tr></thead>
+          <tbody>
+            ${siralama.map((a, i) => `<tr>
+              <td>${madalya(i)}</td>
+              <td><strong>Oda ${a.room_id}</strong></td>
+              <td><span class="badge ${a.ort >= 4 ? 'badge-success' : a.ort >= 2.5 ? 'badge-warning' : 'badge-danger'}">${a.ort.toFixed(1)}</span></td>
+              <td>${a.adet}</td>
+              <td style="color:var(--muted)">${fmtDate(a.sonTarih)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 // ── ARAMA ──
 async function aramaYap() {
   const q = document.getElementById('aramaInput').value.trim();
@@ -1161,14 +1460,11 @@ function turLabel(type) {
   return TUR_LABELS[type] || type || '—';
 }
 
-// ── DASHBOARD ÖZET KARTLARI ──
+// ── ÖZET KARTLARI (oda detay ekranı) ──
 const DASH_ICONS = {
-  oda:   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V6l7-3 7 3v15M9 21v-5h6v5"/></svg>',
-  ogr:   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-1a4 4 0 0 0-8 0v1M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>',
   gece:  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
   namaz: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16M5 21v-7c0-4 3-6 7-6s7 2 7 6v7M12 8V4m0 0c-.9.7-.9 1.8 0 2.5.9-.7.9-1.8 0-2.5z"/></svg>',
   etut:  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v13M3 5.5h5A3 3 0 0 1 12 7a3 3 0 0 1 4-1.5h5V18h-5a3 3 0 0 0-4 1.5A3 3 0 0 0 8 18H3z"/></svg>',
-  toplam:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4H6l6 8-6 8h12"/></svg>',
 };
 function statCard(svg, label, value, ctx, sev) {
   const hot = sev && Number(value) > 0;

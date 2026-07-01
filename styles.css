@@ -741,8 +741,37 @@ tr.dashboard-row.row-warning td.oda-cell::before {
 .ozet-gec { color: var(--accent); }
 .ozet-izin { color: var(--warning); }
 
+/* ── Dashboard (günlük / toplam) ── */
+.dash-date-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dash-ozet { color: var(--muted); font-size: 14px; font-weight: 600; margin-left: auto; }
+.dash-tur-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.dash-tur-head strong { font-size: 16px; }
+.dash-tur-tags { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dash-legend { display: flex; gap: 14px; align-items: center; }
+.dash-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.dash-legend-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+@media (max-width: 600px) {
+  .dash-ozet { margin-left: 0; flex-basis: 100%; }
+}
+
+/* ── Oda düzeni puanlama ── */
+.puan-row-head { display: flex; align-items: center; gap: 12px; }
+.puan-oda { flex: 1 1 auto; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.puan-seg { flex: none; display: inline-flex; padding: 2px; background: var(--soft); border-radius: 9px; }
+.puan-seg-btn {
+  border: none; background: transparent; color: var(--muted);
+  font-size: 14px; font-weight: 700; width: 36px; padding: 6px 0; border-radius: 7px;
+  transition: background 0.14s, color 0.14s;
+}
+.puan-seg-btn.active { background: var(--accent); color: #fff; box-shadow: var(--shadow-sm); }
+.puan-note { margin-top: 10px; padding: 7px 10px; font-size: 13px; }
+
 @media (max-width: 600px) {
   .yok-seg { flex: 1 1 100%; order: 3; }
   .yok-seg-btn { flex: 1; text-align: center; }
   .yok-note-toggle { order: 2; }
+  .puan-row-head { flex-wrap: wrap; }
+  .puan-oda { flex: 1 1 100%; }
+  .puan-seg { flex: 1 1 auto; }
+  .puan-seg-btn { flex: 1; }
 }
