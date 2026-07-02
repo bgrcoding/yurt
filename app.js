@@ -134,21 +134,36 @@ let dashStuRoom = {};     // öğrenci adı → oda no eşlemesi
 let dashRooms = [];       // oda listesi (Genel sekmesi oda özeti için)
 let dashTab = 'gun';
 
+// Supabase tek sorguda en fazla 1000 satır döner; yoklama kaydı arttıkça
+// bu sınıra takılıp en yeni (bugünkü) kayıtlar kaybolmasın diye sayfalar.
+async function fetchAllRows(table, selectCols) {
+  const PAGE = 1000;
+  let from = 0, all = [];
+  for (;;) {
+    const { data, error } = await sb.from(table).select(selectCols).range(from, from + PAGE - 1);
+    if (error) { console.error(table + ' fetch error:', error); break; }
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 async function loadDashboard() {
   const gunWrap = document.getElementById('dashGunSonuc');
   if (gunWrap) gunWrap.innerHTML = '<div class="spinner"></div>';
   const t = document.getElementById('dashTarih');
   if (t && !t.value) t.value = new Date().toISOString().split('T')[0];
 
-  const [roomsRes, studentsRes, rollRes] = await Promise.all([
+  const [roomsRes, studentsRes, rollcalls] = await Promise.all([
     sb.from('rooms').select('id, name').order('id'),
     sb.from('room_students').select('room_id, student_name'),
-    sb.from('rollcalls').select('date, room_id, type, status, student_name, note'),
+    fetchAllRows('rollcalls', 'date, room_id, type, status, student_name, note'),
   ]);
   dashRooms = roomsRes.data || [];
   dashStuRoom = {};
   (studentsRes.data || []).forEach(s => { dashStuRoom[s.student_name] = s.room_id; });
-  dashRollcalls = rollRes.data || [];
+  dashRollcalls = rollcalls;
 
   renderDashActive();
 }
