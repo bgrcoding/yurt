@@ -65,6 +65,7 @@
 
     <div class="detail-tabs">
       <button class="tab-btn active" id="dashTabGunBtn" onclick="switchDashTab('gun')">Günlük</button>
+      <button class="tab-btn" id="dashTabHaftaBtn" onclick="switchDashTab('hafta')">Haftalık</button>
       <button class="tab-btn" id="dashTabToplamBtn" onclick="switchDashTab('toplam')">Toplam</button>
       <button class="tab-btn" id="dashTabGenelBtn" onclick="switchDashTab('genel')">Genel</button>
     </div>
@@ -84,6 +85,20 @@
         </div>
       </div>
       <div id="dashGunSonuc"><div class="spinner"></div></div>
+    </div>
+
+    <!-- View: Haftalık -->
+    <div class="view" id="dashViewHafta">
+      <div class="card" style="margin-bottom:20px">
+        <div class="dash-date-bar">
+          <button class="btn btn-sm" onclick="dashShiftWeek(-1)" aria-label="Önceki hafta" type="button">‹</button>
+          <span id="dashHaftaEtiket" class="dash-hafta-etiket"></span>
+          <button class="btn btn-sm" onclick="dashShiftWeek(1)" aria-label="Sonraki hafta" type="button">›</button>
+          <button class="btn btn-sm btn-ghost" onclick="dashBuHafta()" type="button">Bu Hafta</button>
+          <span id="dashHaftaOzet" class="dash-ozet"></span>
+        </div>
+      </div>
+      <div id="dashHaftaSonuc"></div>
     </div>
 
     <!-- View: Toplam -->
@@ -253,7 +268,7 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">Oda Düzeni</h1>
-        <p class="page-subtitle">Odaların düzenine 1–5 arası puan ver, sıralamayı gör</p>
+        <p class="page-subtitle">Odaların düzenine 1–10 arası puan ver, sıralamayı gör</p>
       </div>
     </div>
 
@@ -272,7 +287,7 @@
           </div>
         </div>
         <button class="btn btn-primary" style="margin-top:16px" onclick="loadOdaPuanTumu()">Odaları Getir</button>
-        <p style="color:var(--muted);font-size:13px;margin:10px 0 0">Her odaya <strong>1–5</strong> arası puan ver (5 = en düzenli). İstersen not ekle, sonra <strong>Hepsini Kaydet</strong>'e bas.</p>
+        <p style="color:var(--muted);font-size:13px;margin:10px 0 0">Her odaya <strong>1–10</strong> arası puan ver (10 = en düzenli). İstersen not ekle, sonra <strong>Hepsini Kaydet</strong>'e bas.</p>
       </div>
 
       <div id="puanListesi" style="display:none">

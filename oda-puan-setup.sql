@@ -1,11 +1,11 @@
 -- ODA DÜZENİ PUANLAMA
--- Her odaya, bir tarihte, 1–5 arası düzen puanı (+ opsiyonel not).
+-- Her odaya, bir tarihte, 1–10 arası düzen puanı (+ opsiyonel not).
 -- Aynı oda+tarih için tek kayıt; tekrar kaydetmek GÜNCELLEME olur (upsert).
 create table if not exists room_scores (
   id          bigint generated always as identity primary key,
   room_id     text not null references rooms(id) on delete cascade,
   date        date not null,
-  score       smallint not null check (score between 1 and 5),
+  score       smallint not null check (score between 1 and 10),
   note        text default '',
   created_by  text,
   created_at  timestamptz default now(),

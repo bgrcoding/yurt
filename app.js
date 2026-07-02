@@ -171,13 +171,14 @@ async function loadDashboard() {
 // Aktif sekmeyi yeniden çiz
 function renderDashActive() {
   if (dashTab === 'gun') renderDashGun();
+  else if (dashTab === 'hafta') renderDashHafta();
   else if (dashTab === 'toplam') renderDashToplam();
   else renderDashGenel();
 }
 
 function switchDashTab(tab) {
   dashTab = tab;
-  [['gun', 'Gun'], ['toplam', 'Toplam'], ['genel', 'Genel']].forEach(([key, cap]) => {
+  [['gun', 'Gun'], ['hafta', 'Hafta'], ['toplam', 'Toplam'], ['genel', 'Genel']].forEach(([key, cap]) => {
     const on = key === tab;
     document.getElementById('dashTab' + cap + 'Btn').classList.toggle('active', on);
     document.getElementById('dashView' + cap).classList.toggle('active', on);
@@ -276,6 +277,93 @@ function renderDashGun() {
         <tbody>${rows}</tbody></table></div>` : ''}
     </div>`;
   }).join('');
+}
+
+// ── Haftalık sekme: seçili haftanın (Pzt-Paz) öğrenci bazlı yok/geç toplamı ──
+let dashHaftaBaslangic = null; // o haftanın Pazartesi'si ('YYYY-MM-DD')
+
+// 'YYYY-MM-DD' tarih string'lerini UTC gün-ortasında (T00:00:00Z) işleriz:
+// yerel saat (örn. UTC+3 İstanbul) ile karışırsa toISOString() bir gün geri kayabilir.
+function dashBugununTarihi() {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+}
+
+// Verilen tarihin ait olduğu haftanın Pazartesi'sini döndürür
+function dashHaftaninPazartesi(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const gun = d.getUTCDay(); // 0=Paz, 1=Pzt, ... 6=Cmt
+  const farkPzt = gun === 0 ? -6 : 1 - gun;
+  d.setUTCDate(d.getUTCDate() + farkPzt);
+  return d.toISOString().split('T')[0];
+}
+
+function dashHaftaTarihleri(pazartesi) {
+  const d = new Date(pazartesi + 'T00:00:00Z');
+  const gunler = [];
+  for (let i = 0; i < 7; i++) {
+    gunler.push(d.toISOString().split('T')[0]);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return gunler;
+}
+
+function dashHaftaEtiketGuncelle() {
+  const gunler = dashHaftaTarihleri(dashHaftaBaslangic);
+  document.getElementById('dashHaftaEtiket').textContent = `${fmtDate(gunler[0])} – ${fmtDate(gunler[6])}`;
+}
+
+function dashShiftWeek(delta) {
+  const d = new Date(dashHaftaBaslangic + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + delta * 7);
+  dashHaftaBaslangic = d.toISOString().split('T')[0];
+  renderDashHafta();
+}
+
+function dashBuHafta() {
+  dashHaftaBaslangic = dashHaftaninPazartesi(dashBugununTarihi());
+  renderDashHafta();
+}
+
+function renderDashHafta() {
+  if (!dashHaftaBaslangic) dashHaftaBaslangic = dashHaftaninPazartesi(dashBugununTarihi());
+  dashHaftaEtiketGuncelle();
+
+  const gunler = new Set(dashHaftaTarihleri(dashHaftaBaslangic));
+  const wrap = document.getElementById('dashHaftaSonuc');
+  const ozet = document.getElementById('dashHaftaOzet');
+
+  const agg = {};
+  const haftalik = dashRollcalls.filter(r => gunler.has(r.date));
+  haftalik.forEach(r => {
+    if (r.status !== 'yok' && r.status !== 'gec') return;
+    const a = agg[r.student_name] || (agg[r.student_name] = { name: r.student_name, yok: 0, gec: 0 });
+    if (r.status === 'yok') a.yok++; else a.gec++;
+  });
+  const list = Object.values(agg)
+    .sort((x, y) => y.yok - x.yok || y.gec - x.gec || x.name.localeCompare(y.name, 'tr'));
+
+  const yokN = list.reduce((s, a) => s + a.yok, 0);
+  const gecN = list.reduce((s, a) => s + a.gec, 0);
+  if (ozet) ozet.innerHTML = list.length
+    ? `<span class="ozet-yok">${yokN} yok</span>${gecN ? ` · <span class="ozet-gec">${gecN} geç</span>` : ''}`
+    : '';
+
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div><p>Bu hafta hiç devamsızlık / geç kaydı yok.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="card table-wrap"><table>
+    <thead><tr><th>Öğrenci</th><th>Oda</th><th class="num">Toplam Yok</th><th class="num">Toplam Geç</th></tr></thead>
+    <tbody>${list.map(a => {
+      const oda = dashStuRoom[a.name];
+      return `<tr>
+        <td><strong>${a.name}</strong></td>
+        <td>${oda ? 'Oda ' + oda : '—'}</td>
+        <td class="num ${a.yok ? 'danger' : 'zero'}">${a.yok || '—'}</td>
+        <td class="num ${a.gec ? 'accent' : 'zero'}">${a.gec || '—'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
 }
 
 function renderDashToplam() {
@@ -1042,7 +1130,7 @@ async function saveYoklamaTumu() {
 }
 
 // ── ODA DÜZENİ PUANLAMA ──
-// Oda başına, tarihli, 1–5 arası düzen puanı. Aynı oda+tarih tek kayıt (upsert).
+// Oda başına, tarihli, 1–10 arası düzen puanı. Aynı oda+tarih tek kayıt (upsert).
 let puanOdalarListe = [];
 
 function switchPuanTab(tab) {
@@ -1090,7 +1178,7 @@ async function loadOdaPuanTumu() {
     return `<div class="card puan-row" data-room="${r.id}" data-score="${pre.score || 0}" style="margin-bottom:10px">
       <div class="puan-row-head">
         <span class="puan-oda">${escapeAttr(label)}</span>
-        <span class="puan-seg" role="group" aria-label="Puan">${[1,2,3,4,5].map(n => seg(pre.score, n)).join('')}</span>
+        <span class="puan-seg" role="group" aria-label="Puan">${[1,2,3,4,5,6,7,8,9,10].map(n => seg(pre.score, n)).join('')}</span>
         <button class="yok-note-toggle${hasNote ? ' has-note' : ''}" title="Not" onclick="togglePuanNote(this)" type="button" aria-label="Not ekle">✎</button>
       </div>
       <input class="input puan-note" data-note placeholder="Not..." value="${escapeAttr(pre.note)}"${hasNote ? '' : ' hidden'} />
