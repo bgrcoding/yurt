@@ -1023,12 +1023,17 @@ async function loadYoklamaTumu() {
   const seg = (cur, st, label) =>
     `<button class="yok-seg-btn${cur === st ? ' active' : ''}" data-st="${st}" onclick="markStatus(this,'${st}')" type="button">${label}</button>`;
 
-  document.getElementById('yoklamaGruplar').innerHTML = groups.map(g => {
+  const doluGruplar = groups.filter(g => g.students.length);
+  const bar = doluGruplar.length > 1
+    ? `<div class="yok-gruplar-bar"><button type="button" onclick="setAllYokGroups(true)">Tümü</button><button type="button" onclick="setAllYokGroups(false)">Hiçbiri</button></div>`
+    : '';
+
+  document.getElementById('yoklamaGruplar').innerHTML = bar + groups.map(g => {
     if (!g.students.length) return '';
     return `
       <div class="card yok-group" data-group-key="${g.key}">
         <div class="yok-group-head">
-          <span class="yok-group-title">${g.label}</span>
+          <label class="yok-take"><input type="checkbox" data-take checked onchange="toggleYokGroup(this)" /><span class="yok-group-title">${g.label}</span></label>
           <span class="yok-group-tally" data-tally>${g.students.length} öğrenci</span>
         </div>
         <div class="yok-list">
@@ -1059,6 +1064,20 @@ function markStatus(btn, status) {
   updateYoklamaOzet();
 }
 
+// Grup seç/bırak: seçili olmayan grup kaydedilmez (başka cihaz o grubu alabilir).
+function toggleYokGroup(cb) {
+  cb.closest('.yok-group').classList.toggle('group-off', !cb.checked);
+  updateYoklamaOzet();
+}
+
+function setAllYokGroups(on) {
+  document.querySelectorAll('#yoklamaGruplar [data-take]').forEach(cb => {
+    cb.checked = on;
+    cb.closest('.yok-group').classList.toggle('group-off', !on);
+  });
+  updateYoklamaOzet();
+}
+
 // Not alanını aç/kapa (varsayılan gizli, kalabalık yapmasın diye).
 function toggleYokNote(btn) {
   const input = btn.closest('.yok-row').querySelector('.yok-note');
@@ -1069,7 +1088,7 @@ function toggleYokNote(btn) {
 
 // Sticky özet barı + grup başlıklarındaki canlı "yok/izinli" sayacı.
 function updateYoklamaOzet() {
-  const groups = document.querySelectorAll('#yoklamaGruplar [data-group-key]');
+  const groups = [...document.querySelectorAll('#yoklamaGruplar [data-group-key]')].filter(g => !g.classList.contains('group-off'));
   let topYok = 0, topGec = 0, topIzin = 0, topOgr = 0;
   groups.forEach(gEl => {
     const rows = gEl.querySelectorAll('.yok-row');
@@ -1108,9 +1127,16 @@ async function saveYoklamaTumu() {
   const by = currentUser?.email || 'misafir';
 
   const records = [];
+  const roomIds = new Set();
+  const siniflar = new Set();
   document.querySelectorAll('#yoklamaGruplar [data-group-key]').forEach(groupEl => {
+    // Seçili olmayan grubu atla → o gruba başka cihaz bakıyor olabilir.
+    const take = groupEl.querySelector('[data-take]');
+    if (take && !take.checked) return;
     const g = yoklamaTumuGroups.find(x => x.key === groupEl.dataset.groupKey);
     if (!g) return;
+    if (g.room_id != null) roomIds.add(g.room_id);
+    if (g.etut_sinif != null) siniflar.add(g.etut_sinif);
     groupEl.querySelectorAll('.yok-row').forEach(tr => {
       records.push({
         room_id: g.room_id, etut_sinif: g.etut_sinif, type: tur, date: tarih, time: saat,
@@ -1119,10 +1145,14 @@ async function saveYoklamaTumu() {
       });
     });
   });
-  if (!records.length) { toast('Kaydedilecek öğrenci yok'); return; }
+  if (!records.length) { toast('Kaydedilecek grup seçili değil'); return; }
 
-  // Aynı tarih+tür için önceki kayıtları sil → tekrar kaydetmek KOPYA değil GÜNCELLEME olur
-  const del = await sb.from('rollcalls').delete().eq('date', tarih).eq('type', tur);
+  // SADECE seçili grupların önceki kayıtlarını sil → başka cihazın aldığı
+  // gruplara dokunma. Böylece farklı cihazlar aynı anda yoklama alabilir.
+  let delQ = sb.from('rollcalls').delete().eq('date', tarih).eq('type', tur);
+  if (roomIds.size) delQ = delQ.in('room_id', [...roomIds]);
+  else if (siniflar.size) delQ = delQ.in('etut_sinif', [...siniflar]);
+  const del = await delQ;
   if (del.error) { toast('Hata: ' + del.error.message); return; }
   const ins = await sb.from('rollcalls').insert(records);
   if (ins.error) { toast('Hata: ' + ins.error.message); return; }

@@ -701,6 +701,19 @@ tr.dashboard-row.row-warning td.oda-cell::before {
 .yok-group-title { font-weight: 700; font-size: 15px; }
 .yok-group-tally { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
 
+/* Grup seçimi: onay kutusu, "Tümü/Hiçbiri" çubuğu, seçilmeyen grup soluk+kapalı */
+.yok-take { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.yok-take input { width: 17px; height: 17px; cursor: pointer; accent-color: var(--accent, #1e3a8a); }
+.yok-gruplar-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+.yok-gruplar-bar button {
+  border: 1px solid var(--line, rgba(0,0,0,.12)); background: var(--panel, #fff);
+  color: var(--muted); font-weight: 600; font-size: 13px; padding: 5px 12px;
+  border-radius: 8px; cursor: pointer;
+}
+.yok-gruplar-bar button:hover { color: var(--ink); }
+.yok-group.group-off { opacity: .5; }
+.yok-group.group-off .yok-list { display: none; }
+
 .yok-list { display: flex; flex-direction: column; }
 .yok-row {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
