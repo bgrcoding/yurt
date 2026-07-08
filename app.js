@@ -1552,7 +1552,7 @@ const TUR_LABELS = {
 };
 
 // Etüt/kitap yoklaması SINIF bazlı alınır (odadan bağımsız); gece ise ODA bazlı.
-const ETUT_SINIFLAR = ['Sınıf 1', 'Sınıf 2'];
+const ETUT_SINIFLAR = ['Etüt 1', 'Etüt 2', 'Etüt 3'];
 const SINIF_TURLER = new Set(['etut1', 'etut2', 'etut3', 'kitap']);
 // Devamsızlık sayımı için: namaz türleri ve (eski 'ders' dahil) etüt türleri.
 const NAMAZ_TURLER = ['namaz_sabah', 'namaz_aksam', 'namaz_yatsi'];
