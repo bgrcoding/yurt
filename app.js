@@ -1028,12 +1028,16 @@ async function loadYoklamaTumu() {
     ? `<div class="yok-gruplar-bar"><button type="button" onclick="setAllYokGroups(true)">Tümü</button><button type="button" onclick="setAllYokGroups(false)">Hiçbiri</button></div>`
     : '';
 
+  // Etüt/sınıf yoklamasında gruplar KAPALI gelsin (herkes kendi sınıfını açar);
+  // oda yoklamasında (namaz/gece) açık gelsin (genelde tek kişi tüm binayı alır).
+  const acik = mode === 'oda';
+
   document.getElementById('yoklamaGruplar').innerHTML = bar + groups.map(g => {
     if (!g.students.length) return '';
     return `
-      <div class="card yok-group" data-group-key="${g.key}">
+      <div class="card yok-group${acik ? '' : ' group-off'}" data-group-key="${g.key}">
         <div class="yok-group-head">
-          <label class="yok-take"><input type="checkbox" data-take checked onchange="toggleYokGroup(this)" /><span class="yok-group-title">${g.label}</span></label>
+          <label class="yok-take"><input type="checkbox" data-take${acik ? ' checked' : ''} onchange="toggleYokGroup(this)" /><span class="yok-group-title">${g.label}</span></label>
           <span class="yok-group-tally" data-tally>${g.students.length} öğrenci</span>
         </div>
         <div class="yok-list">
